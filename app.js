@@ -263,7 +263,14 @@ async function fetchPropagationData() {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status} ${response.statusText}`);
+            let detail = `HTTP ${response.status} ${response.statusText}`;
+            try {
+                const payload = await response.json();
+                if (payload.error) detail += `: ${payload.error}`;
+            } catch (_) {
+                // Preserve the HTTP status when the server did not return JSON.
+            }
+            throw new Error(detail);
         }
 
         const xmlText = await response.text();
@@ -271,7 +278,11 @@ async function fetchPropagationData() {
         displayPropagationValues(values);
 
         lastSuccessfulLoad = new Date().toISOString();
-        setStatus("", false);
+        if (response.headers.get("X-RadioStream-Cache") === "stale") {
+            setStatus("* using cached propagation data; the live feed is temporarily unavailable");
+        } else {
+            setStatus("", false);
+        }
         return true;
     } catch (error) {
         const reason = error.name === "AbortError"
