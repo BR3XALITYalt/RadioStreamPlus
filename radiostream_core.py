@@ -113,6 +113,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "passband_low": 300,
     "passband_high": 2700,
     "rotation_minutes": 14,
+    "overlay_reload_notice": (
+        "Every 30 minutes, the stream will\\n"
+        "automatically reload the receiver.\\n"
+        "When that happens, it will go black\\n"
+        "for a short time, then the waterfall\\n"
+        "should start building up again."
+    ),
+    "overlay_black_notice": (
+        "If the receiver window stays black, something crashed.\\n"
+        "This is unlikely but may happen. If so, please wait for\\n"
+        "the next reload."
+    ),
     "directory_cache_minutes": 30,
 }
 # KiwiSDR's built-in passband fallback values, in Hz relative to the tuned carrier.
@@ -286,6 +298,22 @@ def load_config() -> None:
     save_config()
 
 
+def validate_overlay_text(value: Any, name: str) -> str:
+    """Validate multiline text rendered in the OBS SVG overlay."""
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be text")
+    value = value.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+    value = "".join(
+        char for char in value
+        if char in {"\\n", "\\t"} or ord(char) >= 32
+    )
+    if len(value) > 800:
+        raise ValueError(f"{name} must be 800 characters or fewer")
+    if len(value.split("\\n")) > 8:
+        raise ValueError(f"{name} must contain no more than 8 lines")
+    return value
+
+
 def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[str, Any]:
     base = dict(DEFAULT_CONFIG) if allow_partial else dict(config)
     base.update(raw)
@@ -300,6 +328,12 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
         "passband_low": clamp_number(base["passband_low"], "Passband low", -12000, 12000, integer=True),
         "passband_high": clamp_number(base["passband_high"], "Passband high", -12000, 12000, integer=True),
         "rotation_minutes": clamp_number(base["rotation_minutes"], "Rotation interval", 3, 60),
+        "overlay_reload_notice": validate_overlay_text(
+            base["overlay_reload_notice"], "Overlay reload notice"
+        ),
+        "overlay_black_notice": validate_overlay_text(
+            base["overlay_black_notice"], "Overlay black-screen notice"
+        ),
         "directory_cache_minutes": 30,
     }
     if result["mode"] not in VALID_MODES:
