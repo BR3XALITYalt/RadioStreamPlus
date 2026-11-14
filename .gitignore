@@ -3,3 +3,5 @@ __pycache__/
 radiostream.json
 kiwi_directory_cache.json
 *.log
+
+solar_xml_cache.xml
