@@ -47,7 +47,8 @@ UPDATABLE_FILES = {
 }
 PYTHON_FILES = {"radiostream_core.py", "radiostream_server.py"}
 
-APP_DIR = Path(__file__).resolve().parent
+LAUNCHER_PATH = Path(__file__).resolve()
+APP_DIR = LAUNCHER_PATH.parent
 UPDATE_STATE_PATH = APP_DIR / ".radiostream-update.json"
 STOP_EVENT = threading.Event()
 UPDATE_LOCK = threading.Lock()
@@ -295,11 +296,10 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
         try:
             for path, temporary in staged.items():
                 target = APP_DIR / path
-                if target.exists():
-                    try:
-                        os.chmod(temporary, target.stat().st_mode)
-                    except OSError:
-                        pass
+                try:
+                    os.chmod(temporary, target.stat().st_mode if target.exists() else 0o644)
+                except OSError:
+                    pass
                 os.replace(temporary, target)
                 installed.append(path)
 
@@ -325,14 +325,14 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
             log("Python modules changed. Restarting RadioStream+.")
             time.sleep(0.5)
             try:
-                os.execv(sys.executable, [sys.executable, *sys.argv])
+                os.execv(sys.executable, [sys.executable, str(LAUNCHER_PATH), *sys.argv[1:]])
             except OSError as exc:
                 # Windows and unusual launch environments may reject process
                 # replacement. Start a clean copy before exiting this process.
                 log(f"Process replacement failed ({exc}); starting a fresh process.")
                 import subprocess
                 subprocess.Popen(
-                    [sys.executable, *sys.argv],
+                    [sys.executable, str(LAUNCHER_PATH), *sys.argv[1:]],
                     cwd=str(APP_DIR),
                     close_fds=True,
                 )
