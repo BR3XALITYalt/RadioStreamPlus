@@ -148,11 +148,11 @@ def remote_tree(tree_sha: str) -> dict[str, str]:
 def changed_files_since(previous_sha: str, current_sha: str) -> dict[str, str]:
     compare_url = (
         f"{GITHUB_API}/repos/{REPOSITORY}/compare/"
-        f"{urllib.parse.quote(previous_sha)}...{urllib.parse.quote(current_sha)}"
+        f"{urllib.parse.quote(previous_sha)}...{urllib.parse.quote(current_sha)}?per_page=100"
     )
     comparison = read_json_url(compare_url)
     files = comparison.get("files")
-    if comparison.get("status") != "ahead" or not isinstance(files, list) or len(files) >= 300:
+    if comparison.get("status") != "ahead" or not isinstance(files, list) or len(files) >= 100:
         raise RuntimeError("Commit comparison is unavailable or incomplete; falling back to the full tree")
 
     changed: dict[str, str] = {}
