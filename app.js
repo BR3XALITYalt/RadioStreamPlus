@@ -392,7 +392,7 @@ function setOverlayTextLines(elementId, value, x, firstY, lineHeight) {
     if (!element || typeof value !== "string") return;
 
     const namespace = "http://www.w3.org/2000/svg";
-    const lines = value.replace(/\\r\\n?/g, "\\n").split("\\n");
+    const lines = value.replace(/\r\n?/g, "\n").split("\n");
     const fragment = document.createDocumentFragment();
 
     lines.forEach((line, index) => {
