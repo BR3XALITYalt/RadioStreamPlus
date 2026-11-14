@@ -114,15 +114,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "passband_high": 2700,
     "rotation_minutes": 14,
     "overlay_reload_notice": (
-        "Every 30 minutes, the stream will\\n"
-        "automatically reload the receiver.\\n"
-        "When that happens, it will go black\\n"
-        "for a short time, then the waterfall\\n"
+        "Every 30 minutes, the stream will\n"
+        "automatically reload the receiver.\n"
+        "When that happens, it will go black\n"
+        "for a short time, then the waterfall\n"
         "should start building up again."
     ),
     "overlay_black_notice": (
-        "If the receiver window stays black, something crashed.\\n"
-        "This is unlikely but may happen. If so, please wait for\\n"
+        "If the receiver window stays black, something crashed.\n"
+        "This is unlikely but may happen. If so, please wait for\n"
         "the next reload."
     ),
     "directory_cache_minutes": 30,
@@ -302,14 +302,14 @@ def validate_overlay_text(value: Any, name: str) -> str:
     """Validate multiline text rendered in the OBS SVG overlay."""
     if not isinstance(value, str):
         raise ValueError(f"{name} must be text")
-    value = value.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
     value = "".join(
         char for char in value
-        if char in {"\\n", "\\t"} or ord(char) >= 32
+        if char in {"\n", "\t"} or ord(char) >= 32
     )
     if len(value) > 800:
         raise ValueError(f"{name} must be 800 characters or fewer")
-    if len(value.split("\\n")) > 8:
+    if len(value.split("\n")) > 8:
         raise ValueError(f"{name} must contain no more than 8 lines")
     return value
 
