@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240" role="img" aria-labelledby="title">
-  <title id="title">RadioStream+ logo</title>
-  <g transform="translate(520 40) scale(5)">
-    <path d="M7 12h18M7 17h13M7 22h8" fill="none" stroke="#8cc7ff" stroke-width="2.4" stroke-linecap="round"/>
-    <circle cx="24" cy="22" r="3" fill="#72cf9a"/>
+  <title id="title">RadioStream+</title>
+  <g transform="translate(131 40)">
+    <g transform="scale(5)">
+      <path d="M7 12h18M7 17h13M7 22h8" fill="none" stroke="#8cc7ff" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="24" cy="22" r="3" fill="#72cf9a"/>
+    </g>
+    <text x="200" y="109" fill="#20262b" font-family="Helvetica, Arial, sans-serif" font-size="104" font-weight="600" letter-spacing="-1.5">RadioStream+</text>
   </g>
 </svg>
