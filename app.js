@@ -4,9 +4,8 @@ const HAMQSL_XML_URL = "https://www.hamqsl.com/solarxml.php";
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const RETRY_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15 * 1000;
-const MOSCOW_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
+const CLOCK_SETTINGS_KEY = "uvbinfobar.clockSettings";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const COLOR_CLASSES = ["good", "fair", "poor", "undefined"];
 
 const GEOMAG_LEVELS = [
@@ -31,6 +30,8 @@ let lastSuccessfulLoad = null;
 let loadedData = Object.create(null);
 let statusElement;
 let valueElements = [];
+let clockSettings;
+let browserTimeZone = "UTC";
 
 function setStatus(message, visible = true) {
     if (!statusElement) return;
@@ -38,26 +39,106 @@ function setStatus(message, visible = true) {
     statusElement.hidden = !visible;
 }
 
-function updateClock(selector, date) {
+
+function detectBrowserTimeZone() {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch (error) {
+        console.warn("Unable to detect the browser time zone:", error);
+        return "UTC";
+    }
+}
+
+function getDefaultClockLabel(timeZone) {
+    const city = String(timeZone).split("/").pop().replace(/_/g, " ");
+    return city && city !== "UTC" && city !== "GMT" ? city : "Local";
+}
+
+function isValidTimeZone(timeZone) {
+    if (typeof timeZone !== "string" || !timeZone.trim()) return false;
+    try {
+        new Intl.DateTimeFormat("en-US", { timeZone: timeZone.trim() });
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function loadClockSettings() {
+    const defaults = {
+        label: getDefaultClockLabel(browserTimeZone),
+        timeZone: browserTimeZone
+    };
+
+    try {
+        const saved = JSON.parse(localStorage.getItem(CLOCK_SETTINGS_KEY) || "null");
+        if (saved && typeof saved === "object") {
+            const label = typeof saved.label === "string" ? saved.label.trim().slice(0, 18) : "";
+            const timeZone = typeof saved.timeZone === "string" ? saved.timeZone.trim() : "";
+            return {
+                label: label || defaults.label,
+                timeZone: isValidTimeZone(timeZone) ? timeZone : defaults.timeZone
+            };
+        }
+    } catch (error) {
+        console.warn("Clock settings could not be loaded from local storage:", error);
+    }
+
+    return defaults;
+}
+
+function saveClockSettings() {
+    try {
+        localStorage.setItem(CLOCK_SETTINGS_KEY, JSON.stringify(clockSettings));
+    } catch (error) {
+        console.warn("Clock settings could not be saved to local storage:", error);
+    }
+}
+
+function getDateParts(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone, weekday: "short", year: "numeric", month: "2-digit", day: "2-digit"
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.weekday} ${values.year}-${values.month}-${values.day}`;
+}
+
+function getTimeParts(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.hour}:${values.minute}:${values.second}`;
+}
+
+function getUtcOffset(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en", {
+        timeZone, timeZoneName: "shortOffset"
+    }).formatToParts(date);
+    const zone = parts.find(part => part.type === "timeZoneName")?.value || "GMT";
+    return zone.replace(/^GMT/, "UTC");
+}
+
+function updateClock(selector, date, timeZone) {
     const clock = document.querySelector(selector);
     if (!clock) return;
 
     const lines = clock.querySelectorAll("tspan");
-    const dateText = `${WEEKDAYS[date.getUTCDay()]} ${date.toISOString().slice(0, 10)}`;
-    const timeText = date.toISOString().slice(11, 19);
-
     if (lines.length >= 2) {
-        lines[0].textContent = dateText;
-        lines[1].textContent = timeText;
-    } else {
-        clock.textContent = `${dateText} ${timeText}`;
+        lines[0].textContent = getDateParts(date, timeZone);
+        lines[1].textContent = getTimeParts(date, timeZone);
     }
 }
 
 function updateClocks() {
     const now = new Date();
-    updateClock("#clock-utc .val", now);
-    updateClock("#clock-msk .val", new Date(now.getTime() + MOSCOW_UTC_OFFSET_MS));
+    updateClock("#clock-utc .val", now, "UTC");
+    updateClock("#clock-msk .val", now, clockSettings.timeZone);
+
+    const label = document.querySelector("#clock-local-label");
+    const offset = document.querySelector("#clock-local-offset");
+    if (label) label.textContent = clockSettings.label;
+    if (offset) offset.textContent = `(${getUtcOffset(now, clockSettings.timeZone)})`;
 }
 
 function readRequiredText(xmlDocument, selector, label) {
@@ -204,6 +285,86 @@ async function refreshPropagationData() {
     window.setTimeout(refreshPropagationData, nextRefresh);
 }
 
+
+function openClockSettings() {
+    const dialog = document.querySelector("#clock-settings");
+    document.querySelector("#clock-label-input").value = clockSettings.label;
+    document.querySelector("#clock-timezone-input").value = clockSettings.timeZone;
+    document.querySelector("#clock-settings-error").textContent = "";
+    dialog.hidden = false;
+    document.querySelector("#clock-label-input").focus({ preventScroll: true });
+}
+
+function closeClockSettings(restoreFocus = false) {
+    const dialog = document.querySelector("#clock-settings");
+    if (dialog.hidden) return;
+    dialog.hidden = true;
+    if (restoreFocus) document.querySelector("#clock-msk")?.focus({ preventScroll: true });
+}
+
+function applyClockSettings(event) {
+    event.preventDefault();
+
+    const label = document.querySelector("#clock-label-input").value.trim().slice(0, 18);
+    const timeZone = document.querySelector("#clock-timezone-input").value.trim();
+    const error = document.querySelector("#clock-settings-error");
+
+    if (!isValidTimeZone(timeZone)) {
+        error.textContent = "Enter a valid IANA time zone, such as Europe/Moscow.";
+        document.querySelector("#clock-timezone-input").focus({ preventScroll: true });
+        return;
+    }
+
+    clockSettings = {
+        label: label || getDefaultClockLabel(timeZone),
+        timeZone
+    };
+    saveClockSettings();
+    updateClocks();
+    closeClockSettings(true);
+}
+
+function initializeClockSettings() {
+    browserTimeZone = detectBrowserTimeZone();
+    clockSettings = loadClockSettings();
+
+    const trigger = document.querySelector("#clock-msk");
+    const dialog = document.querySelector("#clock-settings");
+
+    trigger.addEventListener("click", event => {
+        event.stopPropagation();
+        if (dialog.hidden) openClockSettings();
+        else closeClockSettings(true);
+    });
+
+    trigger.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (dialog.hidden) openClockSettings();
+            else closeClockSettings(true);
+        }
+    });
+
+    document.querySelector("#clock-settings-form").addEventListener("submit", applyClockSettings);
+    document.querySelector("#cancel-clock-settings").addEventListener("click", () => closeClockSettings(true));
+
+    document.querySelector("#use-browser-time").addEventListener("click", () => {
+        document.querySelector("#clock-label-input").value = getDefaultClockLabel(browserTimeZone);
+        document.querySelector("#clock-timezone-input").value = browserTimeZone;
+        document.querySelector("#clock-settings-error").textContent = "";
+    });
+
+    dialog.addEventListener("click", event => event.stopPropagation());
+    document.addEventListener("click", event => {
+        if (!dialog.hidden && !dialog.contains(event.target) && !trigger.contains(event.target)) {
+            closeClockSettings();
+        }
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !dialog.hidden) closeClockSettings(true);
+    });
+}
+
 function initialize() {
     statusElement = document.querySelector("#status");
     valueElements = Array.from(document.querySelectorAll("#SVGRoot .val[data-key]"));
@@ -217,6 +378,7 @@ function initialize() {
         element.addEventListener("animationend", onValueAnimationEnd);
     }
 
+    initializeClockSettings();
     updateClocks();
     window.setInterval(updateClocks, 1000);
     refreshPropagationData();
