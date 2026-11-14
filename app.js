@@ -387,6 +387,52 @@ function initializeClockSettings() {
     });
 }
 
+function setOverlayTextLines(elementId, value, x, firstY, lineHeight) {
+    const element = document.getElementById(elementId);
+    if (!element || typeof value !== "string") return;
+
+    const namespace = "http://www.w3.org/2000/svg";
+    const lines = value.replace(/\\r\\n?/g, "\\n").split("\\n");
+    const fragment = document.createDocumentFragment();
+
+    lines.forEach((line, index) => {
+        const span = document.createElementNS(namespace, "tspan");
+        span.setAttribute("x", String(x));
+        span.setAttribute("y", String(firstY + index * lineHeight));
+        span.textContent = line;
+        fragment.appendChild(span);
+    });
+
+    element.replaceChildren(fragment);
+}
+
+async function loadOverlayMessages() {
+    try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const config = payload.config || {};
+
+        setOverlayTextLines(
+            "text9615",
+            config.overlay_reload_notice,
+            702.64648,
+            907.37019,
+            32.2666
+        );
+        setOverlayTextLines(
+            "text11484",
+            config.overlay_black_notice,
+            44.925781,
+            931.4984,
+            26.4
+        );
+    } catch (error) {
+        // Keep the text embedded in index.html if the local config endpoint is unavailable.
+        console.warn("Unable to load saved overlay messages:", error);
+    }
+}
+
 function initialize() {
     statusElement = document.querySelector("#status");
     valueElements = Array.from(document.querySelectorAll("#SVGRoot .val[data-key]"));
@@ -401,6 +447,7 @@ function initialize() {
     }
 
     initializeClockSettings();
+    loadOverlayMessages();
     updateClocks();
     window.setInterval(updateClocks, 1000);
     refreshPropagationData();
