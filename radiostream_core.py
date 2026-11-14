@@ -148,7 +148,6 @@ def check_receiver_online(receiver: dict[str, Any]) -> tuple[bool, str]:
         headers={
             "User-Agent": "Mozilla/5.0 (compatible; RadioStreamPlus/1.0)",
             "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
-            "Range": f"bytes=0-{RECEIVER_PROBE_MAX_BYTES - 1}",
         },
     )
     opener = urllib.request.build_opener(_PublicOnlyRedirectHandler())
@@ -399,9 +398,7 @@ def make_tune_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
         "pb": f"{cfg['passband_low']},{cfg['passband_high']}",
         "cmap": "1",
         "vol": str(cfg["volume"]),
-        # KiwiSDR accepts "user" as a visitor identity, avoiding its required-name prompt.
-        # An empty "ext=" also suppresses KiwiSDR's first-visit readme panel.
-        "user": "RadioStreamPlus",
+        # An empty "ext=" suppresses KiwiSDR's nonessential first-visit readme panel.
         "ext": "",
     })
     return f"{receiver['url']}/?{query}"
