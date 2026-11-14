@@ -412,10 +412,15 @@ async function loadOverlayMessages() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
         const config = payload.config || {};
+        const rotationMinutes = Number.isFinite(Number(config.rotation_minutes))
+            ? String(config.rotation_minutes)
+            : "14";
+        const reloadNotice = String(config.overlay_reload_notice ?? "")
+            .replace(/\$\{M\}/g, rotationMinutes);
 
         setOverlayTextLines(
             "text9615",
-            config.overlay_reload_notice,
+            reloadNotice,
             702.64648,
             907.37019,
             32.2666
