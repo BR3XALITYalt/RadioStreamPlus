@@ -91,7 +91,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
             <div class="field"><label for="pb-low">Passband low</label><input id="pb-low" type="number" min="-12000" max="12000" step="1"></div>
             <div class="field"><label for="pb-high">Passband high</label><input id="pb-high" type="number" min="-12000" max="12000" step="1"></div>
           </div>
-          <p class="hint" style="margin:12px 0 0;">Zoom, frequency, mode, volume, and passband settings are applied to every receiver when it is opened. Receiver locations and coverage come from the public KiwiSDR directory.</p>
+          <p class="hint" style="margin:12px 0 0;">Changing the modulation mode loads its KiwiSDR default passband. You can adjust the passband edges manually afterward. Settings are applied to every receiver when it is opened. Receiver locations and coverage come from the public KiwiSDR directory.</p>
           <div class="section-actions"><button id="save" class="primary">Save settings</button><button id="next">Next receiver</button></div>
           <div id="save-status" class="status" role="status"></div>
           <div id="current" class="current"><strong>No receiver selected</strong><span>Choose an area, find receivers, and select one.</span></div>
@@ -138,6 +138,20 @@ function setCenter(lat, lon, pan=false) {
 centerMarker.on("dragend", () => { const p = centerMarker.getLatLng(); setCenter(p.lat,p.lng); });
 map.on("click", event => setCenter(event.latlng.lat,event.latlng.lng));
 $("radius").addEventListener("input", updateArea);
+
+const MODE_DEFAULT_PASSBANDS = Object.freeze({
+  am: [-4900, 4900],
+  lsb: [-2700, -300],
+  usb: [300, 2700],
+  cw: [300, 700],
+  nbfm: [-6000, 6000]
+});
+
+$("mode").addEventListener("change", () => {
+  const [low, high] = MODE_DEFAULT_PASSBANDS[$("mode").value];
+  $("pb-low").value = low;
+  $("pb-high").value = high;
+});
 
 async function api(path, body) {
   const options = body === undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)};
