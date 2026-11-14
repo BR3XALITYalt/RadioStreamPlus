@@ -77,7 +77,7 @@ Default passbands (low / high):
 Changing the modulation mode in the management page applies that mode's default passband. You can then edit either edge manually. Existing saved passbands are preserved when the page loads.
 
 - `rotation_minutes`: how long to stay on a receiver before switching (3–60 minutes; default 14).
-- `overlay_reload_notice`: multiline text shown in the OBS overlay to describe the periodic receiver reload. The ` ${M} ` placeholder is replaced with `rotation_minutes` when displayed.
+- `overlay_reload_notice`: multiline text shown in the OBS overlay to describe the periodic receiver reload. The `${M}` placeholder is replaced with `rotation_minutes` when displayed.
 - `overlay_black_notice`: multiline text shown in the OBS overlay if the receiver window stays black.
 
 Both overlay messages can be edited in the management page and are saved in `radiostream.json`. Keep their line breaks where you want the lines to appear; each message supports up to 8 lines and 800 characters. Older configuration files are migrated automatically on startup, with the default messages written back without changing their existing radio settings.
