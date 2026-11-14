@@ -39,12 +39,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "mode": "usb",
     "zoom": 11,
     "volume": 180,
-    "passband_low": 50,
-    "passband_high": 4000,
+    "passband_low": 300,
+    "passband_high": 2700,
     "rotation_minutes": 14,
     "directory_cache_minutes": 30,
 }
-VALID_MODES = {"am", "lsb", "usb", "cw", "nbfm"}
+# KiwiSDR's built-in passband fallback values, in Hz relative to the tuned carrier.
+MODE_DEFAULT_PASSBANDS: dict[str, tuple[int, int]] = {
+    "am": (-4900, 4900),
+    "lsb": (-2700, -300),
+    "usb": (300, 2700),
+    "cw": (300, 700),
+    "nbfm": (-6000, 6000),
+}
+VALID_MODES = set(MODE_DEFAULT_PASSBANDS)
 CONFIG_LOCK = threading.RLock()
 DIRECTORY_LOCK = threading.RLock()
 
