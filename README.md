@@ -1,4 +1,4 @@
-# RadioStream+
+![RadioStream+](assets/radiostreamplus-banner.svg)
 
 RadioStream+ is a local KiwiSDR receiver manager, player, and transparent OBS information overlay. It discovers publicly listed KiwiSDR receivers by their published GPS coordinates, finds stations inside a user-selected area, chooses a suitable receiver for the configured frequency, and rotates to another receiver at a configurable interval.
 
