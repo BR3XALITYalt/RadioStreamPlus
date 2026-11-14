@@ -2,7 +2,8 @@
 
 const HAMQSL_XML_URL = "/api/solar";
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-const RETRY_INTERVAL_MS = 5 * 60 * 1000;
+// HamQSL asks XML/RSS clients not to refresh more often than hourly.
+const RETRY_INTERVAL_MS = 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15 * 1000;
 const CLOCK_SETTINGS_KEY = "uvbinfobar.clockSettings";
 
