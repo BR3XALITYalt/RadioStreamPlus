@@ -102,6 +102,9 @@ Add a separate Browser Source at `http://localhost:5056/sdr` when the KiwiSDR pl
 
 The overlay retains the UTC clock, configurable local-time clock, and HF propagation panel. The local-time clock opens its settings when clicked. HamQSL XML is now retrieved through the local Python server at `/api/solar`, avoiding the direct-browser CORS dependency from the earlier standalone version.
 
+
+HamQSL's [Solar-Terrestrial Data FAQ](https://www.hamqsl.com/FAQ.html#Solar) offers XML and RSS feeds and asks clients to refresh them no more often than once per hour. RadioStream+ enforces that limit in the server, including after failed requests and across restarts. It serves a one-hour local cache between refreshes and can use a valid stale cache for up to 14 days if the feed is unavailable.
+
 ## Data, privacy, and limitations
 
 - The server listens only on the local loopback interface (`127.0.0.1`).
