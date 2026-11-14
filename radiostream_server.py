@@ -27,6 +27,26 @@ last_receiver_error: str | None = None
 SOLAR_CACHE_PATH = APP_DIR / "solar_xml_cache.xml"
 SOLAR_CACHE_MAX_AGE = 14 * 24 * 60 * 60
 
+MAINTENANCE_LOCK = threading.RLock()
+MAINTENANCE_STATE: dict[str, Any] = {
+    "active": False,
+    "message": "An update is being prepared.",
+    "started_at": None,
+}
+
+
+def set_maintenance(active: bool, message: str = "RadioStream+ is updating its files.") -> None:
+    """Enable or disable the maintenance gate used by the launcher updater."""
+    with MAINTENANCE_LOCK:
+        MAINTENANCE_STATE["active"] = bool(active)
+        MAINTENANCE_STATE["message"] = str(message)
+        MAINTENANCE_STATE["started_at"] = time.time() if active else None
+
+
+def get_maintenance_state() -> dict[str, Any]:
+    with MAINTENANCE_LOCK:
+        return dict(MAINTENANCE_STATE)
+
 
 def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
     global current_receiver, current_started_at, last_receiver_ids, last_receiver_error
@@ -200,10 +220,48 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 return False
         return True
 
+    def redirect_to_maintenance(self) -> None:
+        target = "/m.html?" + urllib.parse.urlencode({"return": self.path})
+        self.send_response(302)
+        self.send_header("Location", target)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:
         if not self.ensure_local_request():
             return
         route = urllib.parse.urlsplit(self.path).path
+
+        # This endpoint and the maintenance document stay available while all
+        # normal application routes are locked.
+        if route == "/api/maintenance":
+            self.send_json(get_maintenance_state())
+            return
+        if route == "/m.html":
+            self.send_file("m.html", "text/html")
+            return
+
+        maintenance = get_maintenance_state()
+        if maintenance["active"]:
+            if route in {"/", "/manage", "/overlay", "/sdr"}:
+                self.redirect_to_maintenance()
+            elif route.startswith("/api/"):
+                self.send_json({
+                    "maintenance": True,
+                    "message": maintenance["message"],
+                }, 503)
+            else:
+                self.send_bytes(
+                    maintenance["message"].encode("utf-8"),
+                    "text/plain; charset=utf-8",
+                    503,
+                    {"Retry-After": "3"},
+                )
+            return
+        if route == "/maintenance.js":
+            self.send_file("maintenance.js", "application/javascript")
+            return
         if route in {"/", "/manage"}:
             self.send_file("manage.html", "text/html")
         elif route == "/overlay":
@@ -298,6 +356,13 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         global current_receiver, current_started_at, last_receiver_ids, last_receiver_error
         if not self.ensure_local_request():
+            return
+        maintenance = get_maintenance_state()
+        if maintenance["active"]:
+            self.send_json({
+                "maintenance": True,
+                "message": maintenance["message"],
+            }, 503)
             return
         route = urllib.parse.urlsplit(self.path).path
         try:
