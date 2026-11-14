@@ -291,6 +291,9 @@ def load_config() -> None:
             parsed = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             if isinstance(parsed, dict):
                 config = validate_config(parsed, allow_partial=True)
+                new_overlay_keys = {"overlay_reload_notice", "overlay_black_notice"}
+                if not new_overlay_keys.issubset(parsed):
+                    save_config()
                 return
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             print(f"[config] Could not load radiostream.json: {exc}", file=sys.stderr)
