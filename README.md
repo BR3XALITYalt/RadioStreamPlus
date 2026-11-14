@@ -34,7 +34,7 @@ Open `http://localhost:5056/` in a browser. The first start creates `radiostream
 
 ## Automatic updates
 
-The `radiostream.py` launcher checks the public `main` branch for application updates every two minutes. It downloads changed files over HTTPS, verifies each file against its Git blob SHA-1, stages the complete update, and then replaces the files atomically. If a Python module changes, the launcher restarts RadioStream+ automatically. Otherwise, the open pages leave maintenance mode and return to the page they were using.
+The `radiostream.py` launcher checks the public `main` branch for application updates every two minutes. It downloads changed files over HTTPS, verifies each file against its Git blob SHA-1, stages the complete update, and then replaces the files atomically. If a Python module changes, the launcher stops its request loop, reloads the modules in the same process, and starts the server again. It does not spawn a replacement process, so stopping the launcher from an IDE also stops the local server. Otherwise, the open pages leave maintenance mode and return to the page they were using.
 
 During installation, `/`, `/manage`, `/overlay`, and `/sdr` are redirected to `m.html` (`Maintenance in progress...`). Already-open pages check the maintenance endpoint and redirect there too. They return automatically when the server is ready again.
 
