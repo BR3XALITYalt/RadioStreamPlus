@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import sys
+import ssl
 import threading
 import xml.etree.ElementTree as ET
 import time
@@ -26,6 +27,23 @@ last_receiver_ids: list[str] = []
 last_receiver_error: str | None = None
 SOLAR_CACHE_PATH = APP_DIR / "solar_xml_cache.xml"
 SOLAR_CACHE_MAX_AGE = 14 * 24 * 60 * 60
+
+def create_solar_ssl_context() -> ssl.SSLContext:
+    """Use the system trust store, supplemented by certifi when installed."""
+    context = ssl.create_default_context()
+    try:
+        import certifi
+    except ImportError:
+        return context
+
+    try:
+        context.load_verify_locations(cafile=certifi.where())
+    except (OSError, ssl.SSLError) as exc:
+        print(f"[solar] Could not load certifi CA bundle: {exc}", file=sys.stderr)
+    return context
+
+
+SOLAR_SSL_CONTEXT = create_solar_ssl_context()
 
 MAINTENANCE_LOCK = threading.RLock()
 MAINTENANCE_STATE: dict[str, Any] = {
@@ -303,7 +321,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                             "Accept": "application/xml,text/xml,*/*;q=0.8",
                         },
                     )
-                    with urllib.request.urlopen(request_obj, timeout=12) as response:
+                    with urllib.request.urlopen(request_obj, timeout=12, context=SOLAR_SSL_CONTEXT) as response:
                         candidate = response.read(1024 * 1024 + 1)
                     if len(candidate) > 1024 * 1024:
                         raise ValueError("HamQSL response exceeded 1 MB")
@@ -313,7 +331,17 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                     body = candidate
                     break
                 except (OSError, urllib.error.URLError, TimeoutError, ValueError, ET.ParseError) as exc:
-                    error_text = f"{solar_url}: {exc}"
+                    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+                    if isinstance(reason, ssl.SSLCertVerificationError):
+                        error_text = (
+                            f"{solar_url}: TLS certificate verification failed: {reason}. "
+                            "Update the system/Python CA certificates, check the system clock, "
+                            "or install/update certifi with 'py -m pip install --upgrade certifi'. "
+                            "HamQSL may also be missing an intermediate certificate. "
+                            "RadioStream+ does not disable HTTPS verification."
+                        )
+                    else:
+                        error_text = f"{solar_url}: {exc}"
                     print(f"[solar] {error_text}", file=sys.stderr)
 
             if body is not None:
