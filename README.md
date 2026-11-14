@@ -92,7 +92,7 @@ This uses KiwiSDR's own URL-shortcut feature, not injected JavaScript. The Radio
 4. Set width to `1920` and height to `1080`.
 5. Keep the Browser Source background transparent.
 
-Add a separate Browser Source at `http://localhost:5056/sdr` when the KiwiSDR player should be part of the OBS scene. Enable browser-source audio capture in OBS if you want to capture the receiver audio through that source. You can also open `/sdr` in a regular browser.
+Add a separate Browser Source at `http://localhost:5056/sdr` when the KiwiSDR player should be part of the OBS scene. Enable browser-source audio capture in OBS if you want to capture the receiver audio through that source. The player checks the local server every five seconds and unloads the remote KiwiSDR frame after three consecutive failed checks, so the receiver disconnects when RadioStream+ is stopped. You can also open `/sdr` in a regular browser.
 
 The overlay retains the UTC clock, configurable local-time clock, and HF propagation panel. The local-time clock opens its settings when clicked. HamQSL XML is now retrieved through the local Python server at `/api/solar`, avoiding the direct-browser CORS dependency from the earlier standalone version.
 
