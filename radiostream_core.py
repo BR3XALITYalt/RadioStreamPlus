@@ -154,6 +154,26 @@ def is_offline_receiver_page(page_text: str) -> bool:
     ))
 
 
+def is_openwebrx_page(page_text: str) -> bool:
+    """Identify OpenWebRX pages that can appear in the KiwiSDR directory."""
+    normalized = html.unescape(page_text).casefold()
+
+    # The supplied legacy page includes this explicit OpenWebRX source notice.
+    if "this file is part of openwebrx." in normalized:
+        return True
+    if "openwebrx (c) copyright 2013-2014 andras retzler" in normalized:
+        return True
+
+    # Keep a structural fallback in case a server strips the source comment.
+    structural_markers = (
+        "kiwisdr.min.js",
+        "id-waterfall-container",
+        "id-panels-container",
+        "id-topbar-container",
+    )
+    return all(marker in normalized for marker in structural_markers)
+
+
 def _public_hostname(hostname: str, port: int) -> bool:
     """Reject local and reserved address targets from the public directory."""
     addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
@@ -236,6 +256,8 @@ def check_receiver_online(receiver: dict[str, Any]) -> tuple[bool, str]:
     try:
         with opener.open(request_obj, timeout=RECEIVER_PROBE_TIMEOUT) as response:
             body = response.read(RECEIVER_PROBE_MAX_BYTES).decode("utf-8", "replace")
+            if is_openwebrx_page(body):
+                return remember(False, "Receiver serves an OpenWebRX page, not a KiwiSDR interface")
             if is_offline_receiver_page(body):
                 return remember(False, "KiwiSDR page reports that it is offline or still requires a visitor name")
             if not 200 <= response.status < 400:
