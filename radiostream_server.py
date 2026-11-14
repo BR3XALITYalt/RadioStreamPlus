@@ -453,6 +453,10 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 )
             else:
                 self.send_json({"error": f"HamQSL request failed: {error_text}"}, 502)
+        elif route == "/api/config":
+            with core.CONFIG_LOCK:
+                saved_config = dict(core.config)
+            self.send_json({"config": saved_config})
         elif route == "/api/health":
             self.send_json({
                 "ok": True,
