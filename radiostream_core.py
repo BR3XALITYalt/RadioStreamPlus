@@ -400,5 +400,7 @@ def make_tune_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
         "vol": str(cfg["volume"]),
         # An empty "ext=" suppresses KiwiSDR's nonessential first-visit readme panel.
         "ext": "",
+        # KiwiSDR's native URL shortcut hides its panel UI, including Readme and Control.
+        "keys": "x",
     })
     return f"{receiver['url']}/?{query}"
