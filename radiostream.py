@@ -308,8 +308,16 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
             log("Installation failed. Restoring original files.")
             try:
                 restore_originals({path: originals[path] for path in installed})
-            finally:
-                server.set_maintenance(False, "The update failed. The previous files were restored.")
+            except Exception as rollback_error:
+                message = (
+                    "The update and automatic rollback both failed. "
+                    "Stop RadioStream+ and restore the application files manually."
+                )
+                server.set_maintenance(True, message)
+                STOP_EVENT.set()
+                log(f"CRITICAL: rollback failed: {rollback_error}")
+                raise RuntimeError(message) from rollback_error
+            server.set_maintenance(False, "The update failed. The previous files were restored.")
             raise
 
         log("Installed " + ", ".join(sorted(installed)))
