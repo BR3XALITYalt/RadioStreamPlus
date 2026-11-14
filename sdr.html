@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark"><link rel="icon" href="/favicon.ico" type="image/svg+xml">
 <title>RadioStream+ - KiwiSDR</title>
 <style>
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;background:#000;color:#eee;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
@@ -16,7 +16,7 @@ button{background:rgba(20,25,29,.9);border:1px solid #68737b;border-radius:4px;c
 </style>
 </head>
 <body>
-<iframe id="frame" title="Selected KiwiSDR receiver" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="no-referrer"></iframe>
+<iframe id="frame" title="Selected KiwiSDR receiver" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>
 <div id="message">Waiting for a receiver. Select one from the RadioStream+ management page.</div>
 <div id="hud">
   <div id="station"><strong>RadioStream+</strong>Waiting for receiver details…</div>
@@ -43,7 +43,7 @@ async function refresh(){
       if(url!==activeUrl){activeUrl=url;frame.src=url;}
     }else{
       activeUrl="";frame.removeAttribute("src");message.hidden=false;
-      message.textContent="No available KiwiSDR found in the selected range. Configure the map and radius in RadioStream+.";
+      message.textContent=state.receiver_error ? `No reachable KiwiSDR is available. ${state.receiver_error}` : "No available KiwiSDR found in the selected range. Configure the map and radius in RadioStream+.";
       station.innerHTML="<strong>RadioStream+</strong>No receiver selected";
     }
   }catch(error){message.hidden=false;message.textContent=`RadioStream+ server error: ${error.message}`;}
