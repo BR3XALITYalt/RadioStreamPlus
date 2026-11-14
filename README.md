@@ -80,15 +80,9 @@ The `ext_api` directory field governs non-browser external-API connections. Radi
 
 ## KiwiSDR panel auto-hide
 
-The optional Chrome/Edge extension automatically clicks KiwiSDR's **Hide panel** controls for the Readme and Control panels inside remote receiver pages. It runs in the receiver frame itself, so it can work across the cross-origin iframe boundary that blocks the RadioStream+ page from accessing KiwiSDR's DOM.
+RadioStream+ adds KiwiSDR's native `keys=x` shortcut to every receiver URL. After the receiver initializes, KiwiSDR hides its panel UI, including the **Readme** and **Control** panels. The existing `ext=` parameter also suppresses the nonessential first-visit Readme panel.
 
-Install it once per browser profile:
-
-1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select the repository's `browser-extension` folder.
-
-The extension only acts when it finds the exact KiwiSDR button IDs and matching `toggle_panel(...)` handlers. It does not interact with other page controls.
+This uses KiwiSDR's own URL-shortcut feature, not injected JavaScript. The RadioStream+ page cannot click elements inside a cross-origin KiwiSDR iframe. The `x` shortcut hides all KiwiSDR panels, not just those two, and may take a few seconds to run after the receiver loads.
 
 ## Use in OBS
 
