@@ -64,16 +64,39 @@ class RadioStreamTests(unittest.TestCase):
 
     def test_tune_url_applies_global_frequency_mode_zoom_and_controls(self):
         parsed = urlsplit(rs.make_tune_url({"url": "http://kiwi.example.test:8073"}, self.cfg))
-        params = parse_qs(parsed.query)
+        params = parse_qs(parsed.query, keep_blank_values=True)
         self.assertEqual(params["f"], ["4625usbz9"])
         self.assertEqual(params["pb"], ["50,4000"])
         self.assertEqual(params["vol"], ["180"])
+        self.assertEqual(params["ext"], [""])
+        self.assertNotIn("user", params)
 
     def test_config_validation_rejects_bad_zoom_and_mode(self):
         with self.assertRaises(ValueError):
             rs.validate_config({"zoom": 99})
         with self.assertRaises(ValueError):
             rs.validate_config({"mode": "unsupported"})
+
+    def test_detects_kiwisdr_proxy_offline_page(self):
+        page = """
+            <html><body>
+            The Kiwi 22048.proxy.kiwisdr.com is not online.
+            to check again.
+            </body></html>
+        """
+        self.assertTrue(rs.is_offline_receiver_page(page))
+
+    def test_detects_required_visitor_name_page(self):
+        page = """
+            <html><body>
+            Enter your name or callsign <br> to start KiwiSDR
+            </body></html>
+        """
+        self.assertTrue(rs.is_offline_receiver_page(page))
+
+    def test_does_not_mark_normal_kiwisdr_page_offline(self):
+        page = "<html><title>KiwiSDR</title><body>Welcome to the receiver</body></html>"
+        self.assertFalse(rs.is_offline_receiver_page(page))
 
     def test_directory_schema_validation(self):
         good = {"schema": 1, "receivers": [self.sample()]}
