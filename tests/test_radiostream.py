@@ -78,10 +78,16 @@ class RadioStreamTests(unittest.TestCase):
             rs.validate_config({"mode": "unsupported"})
 
     def test_overlay_message_defaults_match_current_artwork(self):
-        self.assertIn("Every 30 minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
+        self.assertIn("Every ${M} minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
         self.assertIn("the waterfall", rs.DEFAULT_CONFIG["overlay_reload_notice"])
         self.assertIn("something crashed", rs.DEFAULT_CONFIG["overlay_black_notice"])
         self.assertIn("the next reload", rs.DEFAULT_CONFIG["overlay_black_notice"])
+
+    def test_config_validation_preserves_rotation_placeholder(self):
+        text = "Every ${M} minutes, reload receiver"
+        validated = rs.validate_config({"overlay_reload_notice": text})
+        self.assertEqual(validated["overlay_reload_notice"], text)
+        self.assertEqual(validated["rotation_minutes"], rs.DEFAULT_CONFIG["rotation_minutes"])
 
     def test_config_validation_preserves_custom_multiline_overlay_text(self):
         reload_text = "Line one\nLine two"
