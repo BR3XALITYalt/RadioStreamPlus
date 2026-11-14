@@ -121,6 +121,7 @@ def get_state() -> dict[str, Any]:
         with STATE_LOCK:
             current = dict(current_receiver) if current_receiver else None
             started = current_started_at
+            receiver_error = last_receiver_error
         elapsed = time.monotonic() - started if started else 0.0
 
     if current:
@@ -337,6 +338,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                     current_started_at = time.monotonic()
                     last_receiver_ids.append(chosen["id"])
                     last_receiver_ids = last_receiver_ids[-100:]
+                    last_receiver_error = None
                 self.send_json({"ok": True, "state": get_state()})
 
             elif route == "/api/next":
