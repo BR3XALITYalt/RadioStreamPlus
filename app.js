@@ -49,9 +49,8 @@ function detectBrowserTimeZone() {
     }
 }
 
-function getDefaultClockLabel(timeZone) {
-    const city = String(timeZone).split("/").pop().replace(/_/g, " ");
-    return city && city !== "UTC" && city !== "GMT" ? city : "Local";
+function getDefaultClockLabel() {
+    return "LOCAL";
 }
 
 function isValidTimeZone(timeZone) {
@@ -66,7 +65,7 @@ function isValidTimeZone(timeZone) {
 
 function loadClockSettings() {
     const defaults = {
-        label: getDefaultClockLabel(browserTimeZone),
+        label: getDefaultClockLabel(),
         timeZone: browserTimeZone
     };
 
@@ -136,9 +135,20 @@ function updateClocks() {
     updateClock("#clock-msk .val", now, clockSettings.timeZone);
 
     const label = document.querySelector("#clock-local-label");
+    const labelText = label?.parentElement;
     const offset = document.querySelector("#clock-local-offset");
     if (label) label.textContent = clockSettings.label;
     if (offset) offset.textContent = `(${getUtcOffset(now, clockSettings.timeZone)})`;
+
+    // Keep longer city labels clear of the date and time on the right.
+    if (labelText) {
+        const length = clockSettings.label.length;
+        const layout = length <= 5 ? [42, 150] : length <= 8 ? [30, 165] : length <= 12 ? [24, 180] : [18, 195];
+        labelText.style.fontSize = `${layout[0]}px`;
+        document.querySelectorAll("#clock-msk .val tspan").forEach(line => {
+            line.setAttribute("x", String(layout[1]));
+        });
+    }
 }
 
 function readRequiredText(xmlDocument, selector, label) {
@@ -316,7 +326,7 @@ function applyClockSettings(event) {
     }
 
     clockSettings = {
-        label: label || getDefaultClockLabel(timeZone),
+        label: label || getDefaultClockLabel(),
         timeZone
     };
     saveClockSettings();
@@ -349,7 +359,7 @@ function initializeClockSettings() {
     document.querySelector("#cancel-clock-settings").addEventListener("click", () => closeClockSettings(true));
 
     document.querySelector("#use-browser-time").addEventListener("click", () => {
-        document.querySelector("#clock-label-input").value = getDefaultClockLabel(browserTimeZone);
+        document.querySelector("#clock-label-input").value = getDefaultClockLabel();
         document.querySelector("#clock-timezone-input").value = browserTimeZone;
         document.querySelector("#clock-settings-error").textContent = "";
     });
