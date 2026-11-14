@@ -27,6 +27,10 @@ last_receiver_ids: list[str] = []
 last_receiver_error: str | None = None
 SOLAR_CACHE_PATH = APP_DIR / "solar_xml_cache.xml"
 SOLAR_CACHE_MAX_AGE = 14 * 24 * 60 * 60
+SOLAR_REFRESH_INTERVAL_SECONDS = 60 * 60
+SOLAR_LAST_ATTEMPT_PATH = APP_DIR / ".solar_last_attempt"
+SOLAR_FETCH_LOCK = threading.Lock()
+SOLAR_LAST_ATTEMPT = 0.0
 
 def create_solar_ssl_context() -> ssl.SSLContext:
     """Use the system trust store, supplemented by certifi when installed."""
@@ -44,6 +48,107 @@ def create_solar_ssl_context() -> ssl.SSLContext:
 
 
 SOLAR_SSL_CONTEXT = create_solar_ssl_context()
+
+def load_cached_solar_xml() -> tuple[bytes | None, float]:
+    """Return a valid cached XML document and its age, if it is still usable."""
+    try:
+        age = time.time() - SOLAR_CACHE_PATH.stat().st_mtime
+        if age < 0 or age > SOLAR_CACHE_MAX_AGE:
+            return None, age
+        body = SOLAR_CACHE_PATH.read_bytes()
+        root = ET.fromstring(body)
+        if root.tag.casefold() == "solar":
+            return body, age
+        print("[solar] Cached XML has an unexpected root element", file=sys.stderr)
+    except FileNotFoundError:
+        pass
+    except (OSError, ET.ParseError) as exc:
+        print(f"[solar] No usable cached XML: {exc}", file=sys.stderr)
+    return None, float("inf")
+
+
+def fetch_solar_xml() -> tuple[bytes | None, str | None, str]:
+    """Fetch no more than once per hour, serving cached data between attempts."""
+    global SOLAR_LAST_ATTEMPT
+
+    with SOLAR_FETCH_LOCK:
+        cached_body, cache_age = load_cached_solar_xml()
+        if cached_body is not None and cache_age <= SOLAR_REFRESH_INTERVAL_SECONDS:
+            return cached_body, None, "cached"
+
+        last_attempt = SOLAR_LAST_ATTEMPT
+        try:
+            last_attempt = max(last_attempt, SOLAR_LAST_ATTEMPT_PATH.stat().st_mtime)
+        except OSError:
+            pass
+
+        now = time.time()
+        wait_seconds = SOLAR_REFRESH_INTERVAL_SECONDS - (now - last_attempt)
+        if wait_seconds > 0:
+            if cached_body is not None:
+                return cached_body, None, "stale"
+            retry_minutes = max(1, int((wait_seconds + 59) // 60))
+            return (
+                None,
+                f"HamQSL XML refresh is limited to once per hour. Try again in about {retry_minutes} minutes.",
+                "error",
+            )
+
+        SOLAR_LAST_ATTEMPT = now
+        try:
+            SOLAR_LAST_ATTEMPT_PATH.touch()
+        except OSError as exc:
+            print(f"[solar] Could not save last-attempt time: {exc}", file=sys.stderr)
+
+        error_text = "No solar feed response was received"
+        for solar_url in (
+            "https://www.hamqsl.com/solarxml.php",
+            "https://hamqsl.com/solarxml.php",
+        ):
+            try:
+                request_obj = urllib.request.Request(
+                    solar_url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (compatible; RadioStreamPlus/1.0)",
+                        "Accept": "application/xml,text/xml,*/*;q=0.8",
+                    },
+                )
+                with urllib.request.urlopen(
+                    request_obj,
+                    timeout=12,
+                    context=SOLAR_SSL_CONTEXT,
+                ) as response:
+                    candidate = response.read(1024 * 1024 + 1)
+                if len(candidate) > 1024 * 1024:
+                    raise ValueError("HamQSL response exceeded 1 MB")
+                root = ET.fromstring(candidate)
+                if root.tag.casefold() != "solar":
+                    raise ValueError("HamQSL returned an unexpected XML document")
+
+                try:
+                    temporary = SOLAR_CACHE_PATH.with_suffix(".xml.tmp")
+                    temporary.write_bytes(candidate)
+                    temporary.replace(SOLAR_CACHE_PATH)
+                except OSError as cache_error:
+                    print(f"[solar] Could not save XML cache: {cache_error}", file=sys.stderr)
+                return candidate, None, "fresh"
+            except (OSError, urllib.error.URLError, TimeoutError, ValueError, ET.ParseError) as exc:
+                reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+                if isinstance(reason, ssl.SSLCertVerificationError):
+                    error_text = (
+                        f"{solar_url}: TLS certificate verification failed: {reason}. "
+                        "Update the system/Python CA certificates, check the system clock, "
+                        "or install/update certifi with 'py -m pip install --upgrade certifi' "
+                        "and restart RadioStream+. HamQSL may also be missing an intermediate "
+                        "certificate. HTTPS verification remains enabled."
+                    )
+                else:
+                    error_text = f"{solar_url}: {exc}"
+                print(f"[solar] {error_text}", file=sys.stderr)
+
+        if cached_body is not None:
+            return cached_body, error_text, "stale"
+        return None, error_text, "error"
 
 MAINTENANCE_LOCK = threading.RLock()
 MAINTENANCE_STATE: dict[str, Any] = {
@@ -307,70 +412,14 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_json({"error": str(exc)}, 503)
         elif route == "/api/solar":
-            error_text = "No solar feed response was received"
-            body = None
-            for solar_url in (
-                "https://www.hamqsl.com/solarxml.php",
-                "https://hamqsl.com/solarxml.php",
-            ):
-                try:
-                    request_obj = urllib.request.Request(
-                        solar_url,
-                        headers={
-                            "User-Agent": "Mozilla/5.0 (compatible; RadioStreamPlus/1.0)",
-                            "Accept": "application/xml,text/xml,*/*;q=0.8",
-                        },
-                    )
-                    with urllib.request.urlopen(request_obj, timeout=12, context=SOLAR_SSL_CONTEXT) as response:
-                        candidate = response.read(1024 * 1024 + 1)
-                    if len(candidate) > 1024 * 1024:
-                        raise ValueError("HamQSL response exceeded 1 MB")
-                    root = ET.fromstring(candidate)
-                    if root.tag.casefold() != "solar":
-                        raise ValueError("HamQSL returned an unexpected XML document")
-                    body = candidate
-                    break
-                except (OSError, urllib.error.URLError, TimeoutError, ValueError, ET.ParseError) as exc:
-                    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
-                    if isinstance(reason, ssl.SSLCertVerificationError):
-                        error_text = (
-                            f"{solar_url}: TLS certificate verification failed: {reason}. "
-                            "Update the system/Python CA certificates, check the system clock, "
-                            "or install/update certifi with 'py -m pip install --upgrade certifi'. "
-                            "HamQSL may also be missing an intermediate certificate. "
-                            "RadioStream+ does not disable HTTPS verification."
-                        )
-                    else:
-                        error_text = f"{solar_url}: {exc}"
-                    print(f"[solar] {error_text}", file=sys.stderr)
-
+            body, error_text, cache_status = fetch_solar_xml()
             if body is not None:
-                try:
-                    temporary = SOLAR_CACHE_PATH.with_suffix(".xml.tmp")
-                    temporary.write_bytes(body)
-                    temporary.replace(SOLAR_CACHE_PATH)
-                except OSError as cache_error:
-                    print(f"[solar] Could not save XML cache: {cache_error}", file=sys.stderr)
                 self.send_bytes(
                     body,
                     "application/xml; charset=utf-8",
-                    headers={"X-RadioStream-Cache": "fresh"},
+                    headers={"X-RadioStream-Cache": cache_status},
                 )
             else:
-                try:
-                    cache_age = time.time() - SOLAR_CACHE_PATH.stat().st_mtime
-                    if 0 <= cache_age <= SOLAR_CACHE_MAX_AGE:
-                        cached_body = SOLAR_CACHE_PATH.read_bytes()
-                        root = ET.fromstring(cached_body)
-                        if root.tag.casefold() == "solar":
-                            self.send_bytes(
-                                cached_body,
-                                "application/xml; charset=utf-8",
-                                headers={"X-RadioStream-Cache": "stale"},
-                            )
-                            return
-                except (OSError, ET.ParseError) as cache_error:
-                    print(f"[solar] No usable cached XML: {cache_error}", file=sys.stderr)
                 self.send_json({"error": f"HamQSL request failed: {error_text}"}, 502)
         elif route == "/api/health":
             self.send_json({
