@@ -1,6 +1,6 @@
 "use strict";
 
-const HAMQSL_XML_URL = "https://www.hamqsl.com/solarxml.php";
+const HAMQSL_XML_URL = "/api/solar";
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const RETRY_INTERVAL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15 * 1000;

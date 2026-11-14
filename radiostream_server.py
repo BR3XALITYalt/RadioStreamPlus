@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""HTTP server and automatic receiver rotation for RadioStream+."""
+from __future__ import annotations
+
+import json
+import mimetypes
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+import radiostream_core as core
+
+APP_DIR = core.APP_DIR
+HOST = core.HOST
+PORT = core.PORT
+STATE_LOCK = threading.RLock()
+current_receiver: dict[str, Any] | None = None
+current_started_at = 0.0
+last_receiver_ids: list[str] = []
+
+
+def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
+    global current_receiver, current_started_at, last_receiver_ids
+    try:
+        receivers, _ = core.discover_receivers()
+    except RuntimeError as exc:
+        core.directory_error = str(exc)
+        with STATE_LOCK:
+            current_receiver = None
+            current_started_at = 0.0
+        return None
+
+    candidates = [item for item in receivers if item["available"]]
+    if not candidates:
+        with STATE_LOCK:
+            current_receiver = None
+            current_started_at = 0.0
+        return None
+
+    with STATE_LOCK:
+        current_id = current_receiver["id"] if current_receiver else None
+        recent = set(last_receiver_ids[-max(1, len(candidates) - 1):])
+        chosen = None
+        if current_id and not force_next:
+            chosen = next((item for item in candidates if item["id"] == current_id), None)
+
+        if force_next or chosen is None:
+            # Avoid recently used stations where possible. A one-receiver
+            # search area naturally remains on its only candidate.
+            pool = [item for item in candidates if item["id"] not in recent]
+            if not pool:
+                pool = candidates
+            if current_id and len(pool) > 1:
+                pool = [item for item in pool if item["id"] != current_id] or pool
+            chosen = pool[0]
+
+        current_receiver = chosen
+        current_started_at = time.monotonic()
+        last_receiver_ids.append(chosen["id"])
+        last_receiver_ids = last_receiver_ids[-100:]
+        return dict(chosen)
+
+
+def get_state() -> dict[str, Any]:
+    global current_receiver, current_started_at
+    with core.CONFIG_LOCK:
+        cfg = dict(core.config)
+    with STATE_LOCK:
+        current = dict(current_receiver) if current_receiver else None
+        started = current_started_at
+
+    rotation_seconds = float(cfg["rotation_minutes"]) * 60
+    elapsed = time.monotonic() - started if started else 0.0
+    should_start = current is None
+    should_rotate = current is not None and elapsed >= rotation_seconds
+
+    if should_start or should_rotate:
+        pick_next_receiver(force_next=should_rotate)
+        with STATE_LOCK:
+            current = dict(current_receiver) if current_receiver else None
+            started = current_started_at
+        elapsed = time.monotonic() - started if started else 0.0
+
+    if current:
+        current["tune_url"] = core.make_tune_url(current, cfg)
+
+    remaining = max(0, int(rotation_seconds - elapsed)) if current else None
+    return {
+        "current": current,
+        "remaining_seconds": remaining,
+        "rotation_minutes": cfg["rotation_minutes"],
+        "config": cfg,
+        "directory_error": core.directory_error,
+    }
+
+
+def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
+    length = int(handler.headers.get("Content-Length", "0"))
+    if length <= 0 or length > 64 * 1024:
+        raise ValueError("Request body is empty or too large")
+    parsed = json.loads(handler.rfile.read(length).decode("utf-8"))
+    if not isinstance(parsed, dict):
+        raise ValueError("Request must be a JSON object")
+    return parsed
+
+
+class RadioStreamHandler(BaseHTTPRequestHandler):
+    server_version = "RadioStreamPlus/1.0"
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
+
+    def send_bytes(self, body: bytes, content_type: str, status: int = 200) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def send_json(self, value: Any, status: int = 200) -> None:
+        self.send_bytes(
+            json.dumps(value, ensure_ascii=False).encode("utf-8"),
+            "application/json; charset=utf-8",
+            status,
+        )
+
+    def send_file(self, filename: str, content_type: str | None = None) -> None:
+        path = (APP_DIR / filename).resolve()
+        if path.parent != APP_DIR.resolve() or not path.is_file():
+            self.send_error(404)
+            return
+        data = path.read_bytes()
+        guessed = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        charset = "; charset=utf-8" if guessed.startswith(
+            ("text/", "application/javascript", "image/svg+xml")
+        ) else ""
+        self.send_bytes(data, guessed + charset)
+
+    def ensure_local_request(self) -> bool:
+        host = self.headers.get("Host", "").split(":", 1)[0].strip("[]").lower()
+        origin = self.headers.get("Origin")
+        if host not in {"127.0.0.1", "localhost"}:
+            self.send_error(403, "RadioStream+ only accepts local requests")
+            return False
+        if origin:
+            parsed = urllib.parse.urlsplit(origin)
+            if parsed.hostname not in {"127.0.0.1", "localhost"}:
+                self.send_error(403, "Cross-origin requests are not allowed")
+                return False
+        return True
+
+    def do_GET(self) -> None:
+        if not self.ensure_local_request():
+            return
+        route = urllib.parse.urlsplit(self.path).path
+        if route in {"/", "/manage"}:
+            self.send_file("manage.html", "text/html")
+        elif route == "/overlay":
+            self.send_file("index.html", "text/html")
+        elif route == "/sdr":
+            self.send_file("sdr.html", "text/html")
+        elif route == "/app.js":
+            self.send_file("app.js", "application/javascript")
+        elif route == "/api/state":
+            try:
+                self.send_json(get_state())
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, 503)
+        elif route == "/api/discover":
+            try:
+                receivers, meta = core.discover_receivers()
+                with core.CONFIG_LOCK:
+                    cfg = dict(core.config)
+                self.send_json({"receivers": receivers, "meta": meta, "config": cfg})
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, 503)
+        elif route == "/api/solar":
+            try:
+                request_obj = urllib.request.Request(
+                    core.HAMQSL_URL, headers={"User-Agent": core.APP_USER_AGENT}
+                )
+                with urllib.request.urlopen(request_obj, timeout=15) as response:
+                    body = response.read(1024 * 1024 + 1)
+                if len(body) > 1024 * 1024:
+                    raise ValueError("HamQSL response exceeded 1 MB")
+                self.send_bytes(body, "application/xml; charset=utf-8")
+            except (OSError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+                self.send_json({"error": f"HamQSL request failed: {exc}"}, 502)
+        elif route == "/api/health":
+            self.send_json({
+                "ok": True,
+                "version": "1.0",
+                "directory_cached": core.directory_data is not None,
+            })
+        else:
+            self.send_error(404)
+
+    def do_POST(self) -> None:
+        global current_receiver, current_started_at, last_receiver_ids
+        if not self.ensure_local_request():
+            return
+        route = urllib.parse.urlsplit(self.path).path
+        try:
+            data = read_json_body(self)
+            if route == "/api/config":
+                with core.CONFIG_LOCK:
+                    core.config = core.validate_config(data)
+                    core.save_config()
+                with STATE_LOCK:
+                    current_receiver = None
+                    current_started_at = 0.0
+                    last_receiver_ids = []
+                self.send_json({"ok": True, "config": dict(core.config)})
+
+            elif route == "/api/select":
+                wanted_id = str(data.get("id", ""))
+                receivers, _ = core.discover_receivers()
+                chosen = next(
+                    (item for item in receivers
+                     if item["id"] == wanted_id and item["available"]),
+                    None,
+                )
+                if not chosen:
+                    self.send_json(
+                        {"error": "That receiver is no longer available in this range"},
+                        404,
+                    )
+                    return
+                with STATE_LOCK:
+                    current_receiver = chosen
+                    current_started_at = time.monotonic()
+                    last_receiver_ids.append(chosen["id"])
+                    last_receiver_ids = last_receiver_ids[-100:]
+                self.send_json({"ok": True, "state": get_state()})
+
+            elif route == "/api/next":
+                chosen = pick_next_receiver(force_next=True)
+                self.send_json({"ok": bool(chosen), "state": get_state()})
+
+            elif route == "/api/refresh-directory":
+                payload = core.fetch_directory()
+                self.send_json({
+                    "ok": True,
+                    "fetched_at": payload.get("fetched_at"),
+                    "count": len(payload.get("receivers", [])),
+                })
+            else:
+                self.send_error(404)
+        except (ValueError, json.JSONDecodeError) as exc:
+            self.send_json({"error": str(exc)}, 400)
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, 500)
+
+
+def main() -> None:
+    core.load_config()
+    core.load_disk_directory()
+    server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
+    server.daemon_threads = True
+    print("RadioStream+ is running.")
+    print(f"Management: http://localhost:{PORT}/")
+    print(f"Overlay:    http://localhost:{PORT}/overlay")
+    print(f"KiwiSDR:    http://localhost:{PORT}/sdr")
+    print("Press Ctrl+C to stop.")
+    try:
+        server.serve_forever(poll_interval=0.5)
+    except KeyboardInterrupt:
+        print("\nStopping RadioStream+...")
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

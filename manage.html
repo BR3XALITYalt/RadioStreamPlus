@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>RadioStream+ - Management</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+:root { color-scheme: dark; font-family: Arial, Helvetica, sans-serif; background:#101214; color:#edf0f2; }
+* { box-sizing:border-box; }
+body { margin:0; min-width:320px; }
+header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 22px; border-bottom:1px solid #30363b; background:#15191c; }
+h1 { margin:0; font-size:21px; font-weight:650; letter-spacing:.2px; }
+nav { display:flex; align-items:center; gap:16px; font-size:13px; }
+a { color:#79b8ff; text-decoration:none; }
+a:hover { text-decoration:underline; }
+main { max-width:1500px; margin:0 auto; padding:18px; }
+.layout { display:grid; grid-template-columns:minmax(360px, 1.25fr) minmax(320px, .75fr); gap:16px; align-items:start; }
+.panel { background:#191e22; border:1px solid #30383e; border-radius:7px; overflow:hidden; }
+.panel h2 { margin:0; padding:13px 15px; border-bottom:1px solid #30383e; font-size:15px; font-weight:650; }
+.panel-body { padding:15px; }
+#map { width:100%; height:590px; background:#242a2e; }
+.map-tools { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 15px; border-top:1px solid #30383e; }
+button, input, select { font:inherit; }
+button { border:1px solid #46525c; border-radius:4px; background:#252d33; color:#f1f4f6; padding:8px 11px; cursor:pointer; }
+button:hover { background:#303b43; }
+button.primary { background:#185da8; border-color:#2677ca; }
+button.primary:hover { background:#216fbd; }
+button:disabled { cursor:wait; opacity:.55; }
+.field-grid { display:grid; grid-template-columns:1fr 1fr; gap:13px 14px; }
+.field { min-width:0; display:flex; flex-direction:column; gap:6px; }
+.field.wide { grid-column:1 / -1; }
+label { color:#bdc6cc; font-size:12px; }
+input, select { width:100%; min-height:36px; padding:7px 9px; border:1px solid #424c54; border-radius:4px; background:#101518; color:#f2f4f5; }
+input:focus, select:focus { border-color:#5b9bd5; outline:1px solid #5b9bd5; }
+input[type=range] { padding:0; accent-color:#4294dd; }
+.hint { color:#909ba3; font-size:12px; line-height:1.45; }
+#result-line { margin:0 0 12px; color:#b8c2c9; font-size:13px; line-height:1.5; }
+#receiver-list { display:flex; flex-direction:column; gap:8px; max-height:450px; overflow:auto; }
+.receiver { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px; border:1px solid #343e45; border-radius:5px; background:#14191d; }
+.receiver strong { display:block; font-size:13px; font-weight:650; line-height:1.35; }
+.receiver small { display:block; margin-top:4px; color:#9ba7ae; font-size:11px; line-height:1.4; }
+.receiver .unavailable { color:#df9b76; }
+.receiver .use { white-space:nowrap; }
+.status { min-height:18px; margin-top:10px; color:#aab5bc; font-size:12px; }
+.status.error { color:#f28b82; }
+.status.good { color:#79c99e; }
+.section-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.current { padding:12px; margin-top:14px; background:#111619; border-left:3px solid #428dcc; }
+.current strong { display:block; margin-bottom:5px; font-size:13px; }
+.current span { color:#aeb8bf; font-size:12px; line-height:1.4; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background:#171d21; color:#eee; }
+.leaflet-popup-content { font-size:12px; line-height:1.45; }
+.leaflet-container a.leaflet-popup-close-button { color:#ddd; }
+@media (max-width:850px) { .layout { grid-template-columns:1fr; } #map { height:440px; } }
+@media (max-width:460px) { main { padding:10px; } header { padding:13px; } .field-grid { grid-template-columns:1fr; } .field.wide { grid-column:auto; } #map { height:360px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>RadioStream+</h1>
+  <nav><a href="/overlay" target="_blank" rel="noopener">Overlay</a><a href="/sdr" target="_blank" rel="noopener">SDR player</a></nav>
+</header>
+<main>
+  <div class="layout">
+    <section class="panel">
+      <h2>Receiver area</h2>
+      <div id="map" aria-label="OpenStreetMap receiver selection map"></div>
+      <div class="map-tools">
+        <button id="locate">Use browser location</button>
+        <button id="scan" class="primary">Find receivers in range</button>
+        <button id="refresh">Refresh directory</button>
+        <span class="hint">Click the map or drag the center pin to move the search area.</span>
+      </div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <section class="panel">
+        <h2>Radio settings</h2>
+        <div class="panel-body">
+          <div class="field-grid">
+            <div class="field"><label for="radius">Search range (km)</label><input id="radius" type="number" min="1" max="20000" step="1"></div>
+            <div class="field"><label for="frequency">Frequency (kHz)</label><input id="frequency" type="number" min="10" max="30000" step="0.01"></div>
+            <div class="field"><label for="mode">Demodulation mode</label><select id="mode"><option value="usb">USB</option><option value="lsb">LSB</option><option value="am">AM</option><option value="cw">CW</option><option value="nbfm">NBFM</option></select></div>
+            <div class="field"><label for="zoom">KiwiSDR zoom (all receivers)</label><input id="zoom" type="number" min="0" max="14" step="1"></div>
+            <div class="field"><label for="rotation">Rotate receiver after (minutes)</label><input id="rotation" type="number" min="3" max="60" step="1"></div>
+            <div class="field"><label for="volume">KiwiSDR volume</label><input id="volume" type="number" min="0" max="200" step="1"></div>
+            <div class="field"><label for="pb-low">Passband low</label><input id="pb-low" type="number" min="-12000" max="12000" step="1"></div>
+            <div class="field"><label for="pb-high">Passband high</label><input id="pb-high" type="number" min="-12000" max="12000" step="1"></div>
+          </div>
+          <p class="hint" style="margin:12px 0 0;">Zoom, frequency, mode, volume, and passband settings are applied to every receiver when it is opened. Receiver locations and coverage come from the public KiwiSDR directory.</p>
+          <div class="section-actions"><button id="save" class="primary">Save settings</button><button id="next">Next receiver</button></div>
+          <div id="save-status" class="status" role="status"></div>
+          <div id="current" class="current"><strong>No receiver selected</strong><span>Choose an area, find receivers, and select one.</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Receivers in range</h2>
+        <div class="panel-body">
+          <p id="result-line">Set a pin and select Find receivers in range.</p>
+          <div id="receiver-list"><p class="hint">No receiver list loaded yet.</p></div>
+          <div id="directory-status" class="status" role="status"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const map = L.map("map", {worldCopyJump:true}).setView([20, 0], 2);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+let center = {lat:20, lon:0};
+let centerMarker = L.marker([center.lat, center.lon], {draggable:true}).addTo(map);
+let radiusCircle = L.circle([center.lat, center.lon], {radius:500000, color:"#5ea7e8", weight:1.5, fillOpacity:.08}).addTo(map);
+let receiverMarkers = [];
+let currentConfig = null;
+
+function updateArea() {
+  const radius = Math.max(1, Math.min(20000, Number($("radius").value) || 500));
+  radiusCircle.setLatLng([center.lat, center.lon]);
+  radiusCircle.setRadius(radius * 1000);
+}
+function setCenter(lat, lon, pan=false) {
+  center = {lat:Number(lat), lon:Number(lon)};
+  centerMarker.setLatLng([center.lat, center.lon]);
+  updateArea();
+  if (pan) map.panTo([center.lat, center.lon]);
+}
+centerMarker.on("dragend", () => { const p = centerMarker.getLatLng(); setCenter(p.lat,p.lng); });
+map.on("click", event => setCenter(event.latlng.lat,event.latlng.lng));
+$("radius").addEventListener("input", updateArea);
+
+async function api(path, body) {
+  const options = body === undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)};
+  const response = await fetch(path, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+function readSettings() {
+  return {
+    center_lat:center.lat,
+    center_lon:center.lon,
+    radius_km:Number($("radius").value),
+    frequency_khz:Number($("frequency").value),
+    mode:$("mode").value,
+    zoom:Number($("zoom").value),
+    rotation_minutes:Number($("rotation").value),
+    volume:Number($("volume").value),
+    passband_low:Number($("pb-low").value),
+    passband_high:Number($("pb-high").value)
+  };
+}
+function fillSettings(cfg) {
+  currentConfig = cfg;
+  setCenter(cfg.center_lat,cfg.center_lon,true);
+  map.setView([cfg.center_lat,cfg.center_lon], cfg.radius_km >= 2000 ? 2 : cfg.radius_km >= 500 ? 4 : cfg.radius_km >= 100 ? 6 : 8);
+  $("radius").value=cfg.radius_km;
+  $("frequency").value=cfg.frequency_khz;
+  $("mode").value=cfg.mode;
+  $("zoom").value=cfg.zoom;
+  $("rotation").value=cfg.rotation_minutes;
+  $("volume").value=cfg.volume;
+  $("pb-low").value=cfg.passband_low;
+  $("pb-high").value=cfg.passband_high;
+  updateArea();
+}
+async function saveSettings(showMessage=true) {
+  const data=await api("/api/config",readSettings());
+  currentConfig=data.config;
+  if(showMessage) { $("save-status").textContent="Settings saved to radiostream.json."; $("save-status").className="status good"; }
+}
+function clearReceiverMarkers() { receiverMarkers.forEach(marker=>map.removeLayer(marker)); receiverMarkers=[]; }
+function safeText(value) { return String(value ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+async function selectReceiver(id) {
+  try {
+    await saveSettings(false);
+    const data=await api("/api/select",{id});
+    showCurrent(data.state);
+    $("save-status").textContent="Receiver selected. Open the SDR player to listen.";
+    $("save-status").className="status good";
+  } catch(error) { setStatus(error.message,true); }
+}
+function showCurrent(state) {
+  const current=state?.current;
+  if(!current) {
+    $("current").innerHTML="<strong>No receiver selected</strong><span>No available station is currently selected. Try a larger range or another frequency.</span>";
+    return;
+  }
+  $("current").innerHTML=`<strong>${safeText(current.name)}</strong><span>${safeText(current.location)} · ${current.distance_km} km away<br>${current.snr_hf} dB SNR · ${current.users}/${current.users_max || "?"} users<br>Next rotation in about ${Math.ceil((state.remaining_seconds||0)/60)} min<br><a href="/sdr" target="_blank" rel="noopener">Open SDR player</a></span>`;
+}
+function setStatus(message,error=false) { $("save-status").textContent=message; $("save-status").className="status"+(error?" error":""); }
+function renderReceivers(receivers) {
+  clearReceiverMarkers();
+  const list=$("receiver-list");
+  list.replaceChildren();
+  if(!receivers.length) { list.innerHTML='<p class="hint">No GPS-tagged receivers were found inside this range. Try increasing the radius.</p>'; return; }
+  for(const item of receivers) {
+    const marker=L.circleMarker([item.lat,item.lon],{radius:6,color:item.available?"#8ac9a3":"#a5a5a5",weight:1,fillColor:item.available?"#3e9664":"#777",fillOpacity:.85}).addTo(map);
+    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>${safeText(item.location)}<br>${item.distance_km} km · ${item.snr_hf} dB SNR<br>${item.users}/${item.users_max||"?"} users`);
+    receiverMarkers.push(marker);
+    const card=document.createElement("div"); card.className="receiver";
+    const info=document.createElement("div");
+    info.innerHTML=`<strong>${safeText(item.name)}</strong><small>${safeText(item.location)} · ${item.distance_km} km<br>${item.snr_hf} dB SNR · ${item.users}/${item.users_max||"?"} users · ${item.available?"Available":"Unavailable"}${item.band_ok?"":" · frequency unsupported"}</small>`;
+    const button=document.createElement("button"); button.className="use"; button.textContent=item.available?"Use":"Unavailable"; button.disabled=!item.available;
+    button.addEventListener("click",()=>selectReceiver(item.id));
+    card.append(info,button); list.append(card);
+  }
+}
+async function discover() {
+  try {
+    $("scan").disabled=true; $("result-line").textContent="Searching the cached public directory…";
+    await saveSettings(false);
+    const data=await api("/api/discover");
+    renderReceivers(data.receivers);
+    $("result-line").textContent=`Found ${data.meta.found_count} receivers in range; ${data.meta.available_count} currently marked available at ${$("frequency").value} kHz.`;
+    $("directory-status").textContent=`Directory contains ${data.meta.directory_count} listed receivers · snapshot ${data.meta.fetched_at || "date unavailable"}${data.meta.cache_error?" · refresh warning: "+data.meta.cache_error:""}`;
+    $("directory-status").className="status"+(data.meta.cache_error?" error":"");
+    const state=await api("/api/state"); showCurrent(state);
+  } catch(error) {
+    $("result-line").textContent=error.message;
+    $("result-line").style.color="#f28b82";
+  } finally { $("scan").disabled=false; }
+}
+$("scan").addEventListener("click",discover);
+$("save").addEventListener("click",async()=>{try{await saveSettings();}catch(e){setStatus(e.message,true);}});
+$("next").addEventListener("click",async()=>{try{await saveSettings(false);const data=await api("/api/next",{});showCurrent(data.state);}catch(e){setStatus(e.message,true);}});
+$("locate").addEventListener("click",()=>{
+  if(!navigator.geolocation){setStatus("Browser geolocation is not available.",true);return;}
+  setStatus("Waiting for browser location permission…");
+  navigator.geolocation.getCurrentPosition(pos=>{setCenter(pos.coords.latitude,pos.coords.longitude,true);map.setZoom(7);setStatus("Search pin moved to your browser location. Click Find receivers in range.");},err=>setStatus(`Could not get location: ${err.message}`,true),{enableHighAccuracy:false,timeout:12000,maximumAge:300000});
+});
+$("refresh").addEventListener("click",async()=>{try{const data=await api("/api/refresh-directory",{});setStatus(`Directory snapshot: ${data.fetched_at||"unknown"}. The upstream cache is checked at most every 30 minutes.`,false);await discover();}catch(e){setStatus(e.message,true);}});
+
+(async()=>{
+  try {
+    const data=await api("/api/state");
+    fillSettings(data.config); showCurrent(data);
+  } catch(error) { setStatus(error.message,true); }
+})();
+</script>
+</body>
+</html>

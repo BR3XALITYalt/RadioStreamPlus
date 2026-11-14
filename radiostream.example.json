@@ -1,0 +1,12 @@
+{
+  "center_lat": 20.0,
+  "center_lon": 0.0,
+  "radius_km": 500,
+  "frequency_khz": 4625.0,
+  "mode": "usb",
+  "zoom": 11,
+  "volume": 180,
+  "passband_low": 50,
+  "passband_high": 4000,
+  "rotation_minutes": 14
+}
