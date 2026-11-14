@@ -77,6 +77,19 @@ Before opening a receiver, the player checks its landing page and skips pages th
 
 The `ext_api` directory field governs non-browser external-API connections. RadioStream+ opens the regular KiwiSDR web interface in a browser frame, not the KiwiSDR native external API, so it does not filter web-only receivers based on that field.
 
+
+## KiwiSDR panel auto-hide
+
+The optional Chrome/Edge extension automatically clicks KiwiSDR's **Hide panel** controls for the Readme and Control panels inside remote receiver pages. It runs in the receiver frame itself, so it can work across the cross-origin iframe boundary that blocks the RadioStream+ page from accessing KiwiSDR's DOM.
+
+Install it once per browser profile:
+
+1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
+2. Enable **Developer mode**.
+3. Choose **Load unpacked** and select the repository's `browser-extension` folder.
+
+The extension only acts when it finds the exact KiwiSDR button IDs and matching `toggle_panel(...)` handlers. It does not interact with other page controls.
+
 ## Use in OBS
 
 1. Start RadioStream+ with the Python command above.
