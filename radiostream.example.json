@@ -6,7 +6,7 @@
   "mode": "usb",
   "zoom": 11,
   "volume": 180,
-  "passband_low": 50,
-  "passband_high": 4000,
+  "passband_low": 300,
+  "passband_high": 2700,
   "rotation_minutes": 14
 }
