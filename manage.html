@@ -23,7 +23,7 @@ main { max-width:1500px; margin:0 auto; padding:18px; }
 .panel-body { padding:15px; }
 #map { width:100%; height:590px; background:#242a2e; }
 .map-tools { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 15px; border-top:1px solid #30383e; }
-button, input, select { font:inherit; }
+button, input, select, textarea { font:inherit; }
 button { border:1px solid #46525c; border-radius:4px; background:#252d33; color:#f1f4f6; padding:8px 11px; cursor:pointer; }
 button:hover { background:#303b43; }
 button.primary { background:#185da8; border-color:#2677ca; }
@@ -33,8 +33,8 @@ button:disabled { cursor:wait; opacity:.55; }
 .field { min-width:0; display:flex; flex-direction:column; gap:6px; }
 .field.wide { grid-column:1 / -1; }
 label { color:#bdc6cc; font-size:12px; }
-input, select { width:100%; min-height:36px; padding:7px 9px; border:1px solid #424c54; border-radius:4px; background:#101518; color:#f2f4f5; }
-input:focus, select:focus { border-color:#5b9bd5; outline:1px solid #5b9bd5; }
+input, select, textarea { width:100%; min-height:36px; padding:7px 9px; border:1px solid #424c54; border-radius:4px; background:#101518; color:#f2f4f5; }\ntextarea { min-height:112px; resize:vertical; line-height:1.4; }
+input:focus, select:focus, textarea:focus { border-color:#5b9bd5; outline:1px solid #5b9bd5; }
 input[type=range] { padding:0; accent-color:#4294dd; }
 .hint { color:#909ba3; font-size:12px; line-height:1.45; }
 #result-line { margin:0 0 12px; color:#b8c2c9; font-size:13px; line-height:1.5; }
@@ -98,6 +98,8 @@ input[type=range] { padding:0; accent-color:#4294dd; }
             <div class="field"><label for="volume">KiwiSDR volume</label><input id="volume" type="number" min="0" max="200" step="1"></div>
             <div class="field"><label for="pb-low">Passband low</label><input id="pb-low" type="number" min="-12000" max="12000" step="1"></div>
             <div class="field"><label for="pb-high">Passband high</label><input id="pb-high" type="number" min="-12000" max="12000" step="1"></div>
+            <div class="field wide"><label for="overlay-reload-notice">Overlay: automatic receiver reload notice</label><textarea id="overlay-reload-notice" rows="5" maxlength="800" spellcheck="true"></textarea><span class="hint">Shown in the OBS overlay. Use line breaks to control its layout (up to 8 lines).</span></div>
+            <div class="field wide"><label for="overlay-black-notice">Overlay: black-screen warning</label><textarea id="overlay-black-notice" rows="3" maxlength="800" spellcheck="true"></textarea><span class="hint">Shown in the OBS overlay. Use line breaks to control its layout (up to 8 lines).</span></div>
           </div>
           <p class="hint" style="margin:12px 0 0;">Changing the modulation mode loads its KiwiSDR default passband. You can adjust the passband edges manually afterward. Settings are applied to every receiver when it is opened. Receiver locations and coverage come from the public KiwiSDR directory.</p>
           <div class="section-actions"><button id="save" class="primary">Save settings</button><button id="next">Next receiver</button></div>
@@ -186,7 +188,9 @@ function readSettings() {
     rotation_minutes:Number($("rotation").value),
     volume:Number($("volume").value),
     passband_low:Number($("pb-low").value),
-    passband_high:Number($("pb-high").value)
+    passband_high:Number($("pb-high").value),
+    overlay_reload_notice:$("overlay-reload-notice").value,
+    overlay_black_notice:$("overlay-black-notice").value
   };
 }
 function fillSettings(cfg) {
@@ -201,6 +205,8 @@ function fillSettings(cfg) {
   $("volume").value=cfg.volume;
   $("pb-low").value=cfg.passband_low;
   $("pb-high").value=cfg.passband_high;
+  $("overlay-reload-notice").value=cfg.overlay_reload_notice ?? "";
+  $("overlay-black-notice").value=cfg.overlay_black_notice ?? "";
   updateArea();
 }
 async function saveSettings(showMessage=true) {
