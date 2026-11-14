@@ -44,6 +44,8 @@ UPDATABLE_FILES = {
     "m.html",
     "maintenance.js",
     "radiostream.example.json",
+    "browser-extension/manifest.json",
+    "browser-extension/panel-hider.js",
 }
 PYTHON_FILES = {"radiostream_core.py", "radiostream_server.py"}
 
@@ -296,6 +298,7 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
         try:
             for path, temporary in staged.items():
                 target = APP_DIR / path
+                target.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     os.chmod(temporary, target.stat().st_mode if target.exists() else 0o644)
                 except OSError:
