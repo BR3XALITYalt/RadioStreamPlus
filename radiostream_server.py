@@ -502,22 +502,36 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             self.send_json({"error": str(exc)}, 500)
 
 
-def main() -> None:
+def main(
+    stop_event: threading.Event | None = None,
+    restart_event: threading.Event | None = None,
+) -> None:
     core.load_config()
     core.load_disk_directory()
-    server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
-    server.daemon_threads = True
+    http_server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
+    http_server.daemon_threads = True
+    # handle_request() returns after this timeout, allowing the launcher to
+    # check its stop/reload events without using a detached helper process.
+    http_server.timeout = 0.5
+
     print("RadioStream+ is running.")
     print(f"Management: http://localhost:{PORT}/")
     print(f"Overlay:    http://localhost:{PORT}/overlay")
     print(f"KiwiSDR:    http://localhost:{PORT}/sdr")
     print("Press Ctrl+C to stop.")
     try:
-        server.serve_forever(poll_interval=0.5)
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                break
+            if restart_event is not None and restart_event.is_set():
+                break
+            http_server.handle_request()
     except KeyboardInterrupt:
+        if stop_event is not None:
+            stop_event.set()
         print("\nStopping RadioStream+...")
     finally:
-        server.server_close()
+        http_server.server_close()
 
 
 if __name__ == "__main__":
