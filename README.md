@@ -60,7 +60,20 @@ The management page and `radiostream.json` support:
 - `mode`: `am`, `lsb`, `usb`, `cw`, or `nbfm`.
 - `zoom`: KiwiSDR waterfall zoom, applied to every receiver when it is opened (0–14).
 - `volume`: KiwiSDR volume value (0–200).
-- `passband_low`, `passband_high`: KiwiSDR passband edges in Hz.
+- `passband_low`, `passband_high`: KiwiSDR passband edges in Hz, relative to the tuned carrier.
+
+Default passbands (low / high):
+
+| Mode | Low (Hz) | High (Hz) |
+|---|---:|---:|
+| AM | -4900 | 4900 |
+| LSB | -2700 | -300 |
+| USB | 300 | 2700 |
+| CW | 300 | 700 |
+| NBFM | -6000 | 6000 |
+
+Changing the modulation mode in the management page applies that mode's default passband. You can then edit either edge manually. Existing saved passbands are preserved when the page loads.
+
 - `rotation_minutes`: how long to stay on a receiver before switching (3–60 minutes; default 14).
 
 Frequency, mode, zoom, volume, and passband settings are applied consistently when switching between receivers.
