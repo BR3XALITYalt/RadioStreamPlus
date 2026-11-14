@@ -2,8 +2,12 @@
 """RadioStream+ receiver directory, geospatial filtering, and tune settings."""
 from __future__ import annotations
 
+import html
+import ipaddress
 import json
 import math
+import re
+import socket
 import sys
 import threading
 import time
@@ -46,6 +50,120 @@ directory_data: dict[str, Any] | None = None
 directory_fetched_monotonic = 0.0
 directory_fetched_at: str | None = None
 directory_error: str | None = None
+
+RECEIVER_PROBE_TIMEOUT = 2.0
+RECEIVER_PROBE_MAX_BYTES = 256 * 1024
+RECEIVER_HEALTH_CACHE_SECONDS = 90
+MAX_RECEIVER_PROBES = 8
+RECEIVER_HEALTH_LOCK = threading.RLock()
+RECEIVER_HEALTH_CACHE: dict[str, tuple[float, bool, str]] = {}
+
+
+def is_offline_receiver_page(page_text: str) -> bool:
+    """Recognize KiwiSDR proxy offline and required-identity pages."""
+    visible_text = re.sub(r"<[^>]*>", " ", page_text)
+    normalized = " ".join(html.unescape(visible_text).casefold().split())
+    return any(marker in normalized for marker in (
+        "is not online",
+        "is currently offline",
+        "kiwi is offline",
+        "receiver is offline",
+        "enter your name or callsign to start kiwisdr",
+    ))
+
+
+def _public_hostname(hostname: str, port: int) -> bool:
+    """Reject local and reserved address targets from the public directory."""
+    addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    if not addresses:
+        return False
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0].split("%", 1)[0])
+        if not ip.is_global:
+            return False
+    return True
+
+
+class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Do not follow receiver redirects into private or local address space."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlsplit(newurl)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        try:
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            if not _public_hostname(parsed.hostname, port):
+                return None
+        except (OSError, ValueError):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def check_receiver_online(receiver: dict[str, Any]) -> tuple[bool, str]:
+    """Check a receiver's public landing page before sending it to the player.
+
+    The public directory is a cached snapshot. Short-lived health results stop
+    the player from repeatedly opening receivers that have gone offline.
+    """
+    base_url = str(receiver.get("url") or "").rstrip("/")
+    if not base_url:
+        return False, "Receiver has no URL"
+
+    parsed = urllib.parse.urlsplit(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False, "Receiver URL is invalid"
+
+    probe_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path or "/", "", "")
+    )
+    now = time.monotonic()
+    with RECEIVER_HEALTH_LOCK:
+        cached = RECEIVER_HEALTH_CACHE.get(probe_url)
+        if cached and now - cached[0] < RECEIVER_HEALTH_CACHE_SECONDS:
+            return cached[1], cached[2]
+
+    def remember(online: bool, reason: str) -> tuple[bool, str]:
+        with RECEIVER_HEALTH_LOCK:
+            RECEIVER_HEALTH_CACHE[probe_url] = (time.monotonic(), online, reason)
+            if len(RECEIVER_HEALTH_CACHE) > 2000:
+                current_time = time.monotonic()
+                expired = [
+                    key for key, value in RECEIVER_HEALTH_CACHE.items()
+                    if current_time - value[0] >= RECEIVER_HEALTH_CACHE_SECONDS
+                ]
+                for key in expired:
+                    RECEIVER_HEALTH_CACHE.pop(key, None)
+        return online, reason
+
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if not _public_hostname(parsed.hostname, port):
+            return remember(False, "Receiver hostname does not resolve to a public address")
+    except (OSError, ValueError) as exc:
+        return remember(False, f"Receiver DNS lookup failed: {exc}")
+
+    request_obj = urllib.request.Request(
+        probe_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; RadioStreamPlus/1.0)",
+            "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+            "Range": f"bytes=0-{RECEIVER_PROBE_MAX_BYTES - 1}",
+        },
+    )
+    opener = urllib.request.build_opener(_PublicOnlyRedirectHandler())
+    try:
+        with opener.open(request_obj, timeout=RECEIVER_PROBE_TIMEOUT) as response:
+            body = response.read(RECEIVER_PROBE_MAX_BYTES).decode("utf-8", "replace")
+            if is_offline_receiver_page(body):
+                return remember(False, "KiwiSDR page reports that it is offline or still requires a visitor name")
+            if not 200 <= response.status < 400:
+                return remember(False, f"Receiver returned HTTP {response.status}")
+        return remember(True, "Receiver responded")
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+        return remember(False, f"Receiver could not be reached: {exc}")
+
+
 
 
 def clamp_number(value: Any, name: str, low: float, high: float, integer: bool = False) -> float | int:
@@ -225,8 +343,8 @@ def parse_receiver(receiver: dict[str, Any], cfg: dict[str, Any]) -> dict[str, A
     except (TypeError, ValueError):
         snr_hf = 0.0
 
-    offline = receiver.get("offline") in (True, "yes", "true", 1)
-    flagged = receiver.get("flagged") in (True, "yes", "true", 1)
+    offline = receiver.get("offline") is True or str(receiver.get("offline", "")).strip().casefold() in {"yes", "true", "1", "offline", "down"}
+    flagged = receiver.get("flagged") is True or str(receiver.get("flagged", "")).strip().casefold() in {"yes", "true", "1", "flagged"}
     full = users_max > 0 and users >= users_max
     available = not offline and not flagged and not full and band_ok
     score = snr_hf * 1.4 + (100.0 - occupancy) * 0.4
@@ -281,5 +399,9 @@ def make_tune_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
         "pb": f"{cfg['passband_low']},{cfg['passband_high']}",
         "cmap": "1",
         "vol": str(cfg["volume"]),
+        # KiwiSDR accepts "user" as a visitor identity, avoiding its required-name prompt.
+        # An empty "ext=" also suppresses KiwiSDR's first-visit readme panel.
+        "user": "RadioStreamPlus",
+        "ext": "",
     })
     return f"{receiver['url']}/?{query}"
