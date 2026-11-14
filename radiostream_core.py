@@ -114,7 +114,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "passband_high": 2700,
     "rotation_minutes": 14,
     "overlay_reload_notice": (
-        "Every 30 minutes, the stream will\n"
+        "Every ${M} minutes, the stream will\n"
         "automatically reload the receiver.\n"
         "When that happens, it will go black\n"
         "for a short time, then the waterfall\n"
@@ -290,9 +290,23 @@ def load_config() -> None:
         try:
             parsed = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             if isinstance(parsed, dict):
+                previous_default_reload_notice = (
+                    "Every 30 minutes, the stream will\n"
+                    "automatically reload the receiver.\n"
+                    "When that happens, it will go black\n"
+                    "for a short time, then the waterfall\n"
+                    "should start building up again."
+                )
+                needs_save = False
+                if parsed.get("overlay_reload_notice") == previous_default_reload_notice:
+                    parsed["overlay_reload_notice"] = DEFAULT_CONFIG["overlay_reload_notice"]
+                    needs_save = True
+
                 config = validate_config(parsed, allow_partial=True)
                 new_overlay_keys = {"overlay_reload_notice", "overlay_black_notice"}
                 if not new_overlay_keys.issubset(parsed):
+                    needs_save = True
+                if needs_save:
                     save_config()
                 return
         except (OSError, json.JSONDecodeError, ValueError) as exc:
