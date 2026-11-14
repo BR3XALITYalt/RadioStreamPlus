@@ -9,6 +9,6 @@
   "passband_low": 300,
   "passband_high": 2700,
   "rotation_minutes": 14,
-  "overlay_reload_notice": "Every 30 minutes, the stream will\nautomatically reload the receiver.\nWhen that happens, it will go black\nfor a short time, then the waterfall\nshould start building up again.",
+  "overlay_reload_notice": "Every ${M} minutes, the stream will\nautomatically reload the receiver.\nWhen that happens, it will go black\nfor a short time, then the waterfall\nshould start building up again.",
   "overlay_black_notice": "If the receiver window stays black, something crashed.\nThis is unlikely but may happen. If so, please wait for\nthe next reload."
 }
