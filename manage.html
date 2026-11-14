@@ -280,7 +280,7 @@ function renderReceivers(receivers) {
     const card=document.createElement("div"); card.className="receiver";
     const info=document.createElement("div");
     const status=item.blocked?"Blocked":item.available?"Available":"Unavailable";
-    const preferenceLabel={like:"Liked",dislike:"Disliked",block:"Blocked"}[item.preference];
+    const preferenceLabel={like:"Liked",dislike:"Disliked"}[item.preference];
     info.innerHTML=`<strong>${safeText(item.name)}</strong><small>${safeText(item.location)} · ${item.distance_km} km<br>${item.snr_hf} dB SNR · ${item.users}/${item.users_max||"?"} users · ${status}${preferenceLabel?" · "+preferenceLabel:""}${item.band_ok?"":" · frequency unsupported"}</small>`;
     const actions=document.createElement("div"); actions.className="receiver-actions";
     const button=document.createElement("button"); button.className="use"; button.textContent=item.blocked?"Blocked":item.available?"Use":"Unavailable"; button.disabled=!item.available;
@@ -295,7 +295,7 @@ async function discover() {
     await saveSettings(false);
     const data=await api("/api/discover");
     renderReceivers(data.receivers);
-    $("result-line").textContent=`Found ${data.meta.found_count} receivers in range; ${data.meta.available_count} currently marked available at ${$("frequency").value} kHz.`;
+    $("result-line").textContent=`Found ${data.meta.found_count} receivers in range; ${data.meta.available_count} available and ${data.meta.blocked_count || 0} blocked at ${$("frequency").value} kHz.`;
     $("directory-status").textContent=`Directory contains ${data.meta.directory_count} listed receivers · snapshot ${data.meta.fetched_at || "date unavailable"}${data.meta.cache_error?" · refresh warning: "+data.meta.cache_error:""}`;
     $("directory-status").className="status"+(data.meta.cache_error?" error":"");
     const state=await api("/api/state"); showCurrent(state);
