@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import mimetypes
+import random
 import sys
 import ssl
 import threading
@@ -171,6 +173,24 @@ def get_maintenance_state() -> dict[str, Any]:
         return dict(MAINTENANCE_STATE)
 
 
+def weighted_receiver_order(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a weighted random order while retaining receiver quality as a factor."""
+    preference_weights = {"like": 4.0, "dislike": 0.2}
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for item in candidates:
+        try:
+            quality = max(0.25, min(2.0, 1.0 + float(item.get("score", 0.0)) / 100.0))
+        except (TypeError, ValueError):
+            quality = 1.0
+        preference_weight = preference_weights.get(item.get("preference"), 1.0)
+        weight = quality * preference_weight
+        # Exponential-race sampling creates a weighted random permutation.
+        draw = max(random.random(), 1e-12)
+        ranked.append((-math.log(draw) / weight, item))
+    ranked.sort(key=lambda entry: entry[0])
+    return [item for _, item in ranked]
+
+
 def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
     global current_receiver, current_started_at, last_receiver_ids, last_receiver_error
     try:
@@ -188,23 +208,23 @@ def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
         with STATE_LOCK:
             current_receiver = None
             current_started_at = 0.0
-            last_receiver_error = "No receivers in range are marked available by the public directory."
+            last_receiver_error = "No reachable, unblocked receivers in range are marked available."
         return None
 
     with STATE_LOCK:
         current_id = current_receiver["id"] if current_receiver else None
         if current_id and not force_next:
             current = next((item for item in candidates if item["id"] == current_id), None)
-            ordered = ([current] if current else []) + [
-                item for item in candidates if item["id"] != current_id
-            ]
+            remaining = [item for item in candidates if item["id"] != current_id]
+            ordered = ([current] if current else []) + weighted_receiver_order(remaining)
         else:
             recent = set(last_receiver_ids[-max(1, len(candidates) - 1):])
-            ordered = [item for item in candidates if item["id"] not in recent]
-            if not ordered:
-                ordered = list(candidates)
-            if current_id and len(ordered) > 1:
-                ordered = [item for item in ordered if item["id"] != current_id] or ordered
+            eligible = [item for item in candidates if item["id"] not in recent]
+            if not eligible:
+                eligible = list(candidates)
+            if current_id and len(eligible) > 1:
+                eligible = [item for item in eligible if item["id"] != current_id] or eligible
+            ordered = weighted_receiver_order(eligible)
 
     failures: list[str] = []
     chosen = None
@@ -244,15 +264,25 @@ def get_state() -> dict[str, Any]:
         receiver_error = last_receiver_error
 
     if current:
-        online, reason = core.check_receiver_online(current)
-        if not online:
+        preference = core.get_station_preference(str(current.get("id", "")))
+        if preference == "block":
             with STATE_LOCK:
-                last_receiver_error = f"{current['name']}: {reason}"
+                last_receiver_error = f"{current['name']} was blocked."
             pick_next_receiver(force_next=True)
             with STATE_LOCK:
                 current = dict(current_receiver) if current_receiver else None
                 started = current_started_at
                 receiver_error = last_receiver_error
+        else:
+            online, reason = core.check_receiver_online(current)
+            if not online:
+                with STATE_LOCK:
+                    last_receiver_error = f"{current['name']}: {reason}"
+                pick_next_receiver(force_next=True)
+                with STATE_LOCK:
+                    current = dict(current_receiver) if current_receiver else None
+                    started = current_started_at
+                    receiver_error = last_receiver_error
 
     rotation_seconds = float(cfg["rotation_minutes"]) * 60
     elapsed = time.monotonic() - started if started else 0.0
@@ -268,6 +298,8 @@ def get_state() -> dict[str, Any]:
         elapsed = time.monotonic() - started if started else 0.0
 
     if current:
+        current["preference"] = core.get_station_preference(str(current.get("id", "")))
+        current["blocked"] = current["preference"] == "block"
         current["tune_url"] = core.make_tune_url(current, cfg)
 
     remaining = max(0, int(rotation_seconds - elapsed)) if current else None
@@ -455,14 +487,31 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                     last_receiver_error = None
                 self.send_json({"ok": True, "config": dict(core.config)})
 
+            elif route == "/api/preference":
+                wanted_id = str(data.get("id", ""))
+                preference = core.set_station_preference(
+                    wanted_id,
+                    str(data.get("preference", "")),
+                )
+                state = get_state()
+                self.send_json({
+                    "ok": True,
+                    "id": wanted_id,
+                    "preference": preference,
+                    "state": state,
+                })
+
             elif route == "/api/select":
                 wanted_id = str(data.get("id", ""))
                 receivers, _ = core.discover_receivers()
-                chosen = next(
-                    (item for item in receivers
-                     if item["id"] == wanted_id and item["available"]),
-                    None,
-                )
+                matching = next((item for item in receivers if item["id"] == wanted_id), None)
+                if matching and matching.get("blocked"):
+                    self.send_json(
+                        {"error": "That station is blocked. Clear its block preference before selecting it."},
+                        403,
+                    )
+                    return
+                chosen = matching if matching and matching["available"] else None
                 if not chosen:
                     self.send_json(
                         {"error": "That receiver is no longer available in this range"},
@@ -507,6 +556,7 @@ def main(
     restart_event: threading.Event | None = None,
 ) -> None:
     core.load_config()
+    core.load_station_preferences()
     core.load_disk_directory()
     http_server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
     http_server.daemon_threads = True
