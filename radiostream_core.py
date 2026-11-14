@@ -59,6 +59,7 @@ def load_station_preferences() -> None:
         if (
             station_id
             and len(station_id) <= 2048
+            and isinstance(preference, str)
             and preference in {"like", "dislike", "block"}
         ):
             cleaned[station_id] = preference
@@ -89,7 +90,7 @@ def set_station_preference(station_id: str, preference: str) -> str | None:
         if len(updated) > 20000:
             raise ValueError("The station preference list is full")
 
-        payload = json.dumps({"schema": 1, "stations": updated}, indent=2) + "\\n"
+        payload = json.dumps({"schema": 1, "stations": updated}, indent=2) + "\n"
         temporary = STATION_PREFERENCES_PATH.with_suffix(".json.tmp")
         try:
             temporary.write_text(payload, encoding="utf-8")
