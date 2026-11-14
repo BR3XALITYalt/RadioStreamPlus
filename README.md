@@ -91,6 +91,6 @@ The overlay retains the UTC clock, configurable local-time clock, and HF propaga
 
 ## Project origin and licensing
 
-The information overlay was adapted from [chfour/uvbinfobar](https://github.com/chfour/uvbinfobar), whose upstream project is released under the Unlicense. KiwiSDR rotation behavior was implemented for RadioStream+ using the public receiver metadata and the feature approach documented by [noaa-apt/kiwi-reload](https://github.com/noaa-apt/kiwi-reload). RadioStream+ does not bundle Kiwi-Reload's source code. The relevant upstream Kiwi-Reload project is GPL-3.0 licensed.
+The original RadioStream+ code maintained by BR3XALITY is licensed under the PolyForm Noncommercial License 1.0.0. It permits non-commercial use, redistribution, and modification under the terms in [LICENSE](LICENSE), including the required BR3XALITY notice. The adapted UVB-76 overlay artwork and information panel retain the Unlicense from [chfour/uvbinfobar](https://github.com/chfour/uvbinfobar). KiwiSDR rotation was independently implemented using public receiver metadata, with [noaa-apt/kiwi-reload](https://github.com/noaa-apt/kiwi-reload) as a reference; its GPL-3.0 source code is not bundled.
 
-See [UPSTREAM.md](UPSTREAM.md) for the overlay attribution and [LICENSE](LICENSE) for the overlay's Unlicense terms.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for upstream attribution and third-party licensing details.
