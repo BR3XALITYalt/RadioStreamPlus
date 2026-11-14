@@ -44,6 +44,14 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .receiver small { display:block; margin-top:4px; color:#9ba7ae; font-size:11px; line-height:1.4; }
 .receiver .unavailable { color:#df9b76; }
 .receiver .use { white-space:nowrap; }
+.receiver-actions { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+.receiver-preferences { display:flex; align-items:center; gap:4px; }
+.station-pref { display:grid; place-items:center; width:32px; height:32px; padding:5px; color:#e3e3e3; border-color:#46525c; }
+.station-pref svg { display:block; width:20px; height:20px; fill:currentColor; }
+.station-pref.active-like { color:#35c978; border-color:#35c978; background:#14271d; }
+.station-pref.active-dislike { color:#ff3030; border-color:#ff3030; background:#2a1518; }
+.station-pref.active-block { color:#990000; border-color:#990000; background:#260d0d; }
+.current .receiver-preferences { margin-top:9px; }
 .status { min-height:18px; margin-top:10px; color:#aab5bc; font-size:12px; }
 .status.error { color:#f28b82; }
 .status.good { color:#79c99e; }
@@ -122,7 +130,14 @@ let center = {lat:20, lon:0};
 let centerMarker = L.marker([center.lat, center.lon], {draggable:true}).addTo(map);
 let radiusCircle = L.circle([center.lat, center.lon], {radius:500000, color:"#5ea7e8", weight:1.5, fillOpacity:.08}).addTo(map);
 let receiverMarkers = [];
+let receiverItems = [];
 let currentConfig = null;
+
+const PREFERENCE_ICONS = Object.freeze({
+  like: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24px" width="24px" fill="currentColor" aria-hidden="true"><path d="M18,21H7V8l7-7l1.25,1.25q0.18 0.17 0.29 0.47T15.65,3.3V3.65L14.55,8H21q0.8 0 1.4 0.6T23,10v2q0 0.17-0.05 0.38t-0.1 0.38l-3,7.05q-0.23 0.5-0.75 0.85T18,21ZM9,19h9l3-7V10H12l1.35-5.5L9,8.85V19ZM9,8.85V10v2v7V8.85ZM7,8v2H4v9H7v2H2V8H7Z"/></svg>',
+  dislike: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24px" width="24px" fill="currentColor" aria-hidden="true"><path d="M6,3H17V16l-7,7L8.75,21.75q-0.17-0.18-0.29-0.48T8.35,20.7V20.35L9.45,16H3q-0.8,0-1.4-0.6T1,14V12q0-0.18 0.05-0.38t0.1-0.38l3-7.05Q4.38,3.7 4.9,3.35T6,3Zm9,2H6L3,12v2h9l-1.35,5.5L15,15.15V5Zm0,10.15V14V12V5V15.15ZM17,16V14h3V5H17V3h5V16H17Z"/></svg>',
+  block: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24px" width="24px" fill="currentColor" aria-hidden="true"><path d="M7,13H17V11H7v2Zm5,9q-2.07,0-3.9-0.79q-1.82-0.79-3.17-2.14Q3.58,17.73 2.79,15.9T2,12Q2,9.92 2.79,8.1Q3.58,6.27 4.93,4.93Q6.28,3.57 8.1,2.79Q9.93,2 12,2t3.9,0.79t3.17,2.14q1.35,1.35 2.14,3.17Q22,9.92 22,12t-0.79,3.9t-2.14,3.17q-1.35,1.35-3.17,2.14T12,22Zm0-2q3.35,0 5.68-2.32T20,12T17.68,6.32T12,4T6.33,6.32T4,12t2.33,5.68T12,20Zm0-8Z"/></svg>'
+});
 
 function updateArea() {
   const radius = Math.max(1, Math.min(20000, Number($("radius").value) || 500));
@@ -194,6 +209,40 @@ async function saveSettings(showMessage=true) {
   if(showMessage) { $("save-status").textContent="Settings saved to radiostream.json."; $("save-status").className="status good"; }
 }
 function clearReceiverMarkers() { receiverMarkers.forEach(marker=>map.removeLayer(marker)); receiverMarkers=[]; }
+function createPreferenceControls(item) {
+  const controls = document.createElement("div");
+  controls.className = "receiver-preferences";
+  for (const [preference, label] of [["like","Like station"],["dislike","Dislike station"],["block","Block station"]]) {
+    const active = item.preference === preference;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "station-pref" + (active ? " active-" + preference : "");
+    button.innerHTML = PREFERENCE_ICONS[preference];
+    button.title = label + (active ? " (click to clear)" : "");
+    button.setAttribute("aria-label", label + ": " + item.name);
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", () => updateStationPreference(item.id, active ? "none" : preference));
+    controls.append(button);
+  }
+  return controls;
+}
+async function updateStationPreference(id, preference) {
+  try {
+    const data = await api("/api/preference", {id, preference});
+    const item = receiverItems.find(receiver => receiver.id === id);
+    if (item) {
+      item.preference = data.preference;
+      item.blocked = data.preference === "block";
+      item.available = Boolean(item.directory_available) && !item.blocked;
+      renderReceivers(receiverItems);
+    }
+    showCurrent(data.state);
+    const labels = {like:"Station liked. It will be favored in rotation.",dislike:"Station disliked. It will be less likely in rotation.",block:"Station blocked. It will no longer be selected.",none:"Station preference cleared."};
+    setStatus(labels[data.preference || "none"], false);
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
 function safeText(value) { return String(value ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 async function selectReceiver(id) {
   try {
@@ -206,14 +255,20 @@ async function selectReceiver(id) {
 }
 function showCurrent(state) {
   const current=state?.current;
+  const panel=$("current");
   if(!current) {
-    $("current").innerHTML="<strong>No receiver selected</strong><span>No available station is currently selected. Try a larger range or another frequency.</span>";
+    panel.innerHTML="<strong>No receiver selected</strong><span>No available station is currently selected. Try a larger range or another frequency.</span>";
     return;
   }
-  $("current").innerHTML=`<strong>${safeText(current.name)}</strong><span>${safeText(current.location)} · ${current.distance_km} km away<br>${current.snr_hf} dB SNR · ${current.users}/${current.users_max || "?"} users<br>Next rotation in about ${Math.ceil((state.remaining_seconds||0)/60)} min<br><a href="/sdr" target="_blank" rel="noopener">Open SDR player</a></span>`;
+  const name=document.createElement("strong");
+  name.textContent=current.name;
+  const details=document.createElement("span");
+  details.innerHTML=`${safeText(current.location)} · ${current.distance_km} km away<br>${current.snr_hf} dB SNR · ${current.users}/${current.users_max || "?"} users<br>Next rotation in about ${Math.ceil((state.remaining_seconds||0)/60)} min<br><a href="/sdr" target="_blank" rel="noopener">Open SDR player</a>`;
+  panel.replaceChildren(name,details,createPreferenceControls(current));
 }
 function setStatus(message,error=false) { $("save-status").textContent=message; $("save-status").className="status"+(error?" error":""); }
 function renderReceivers(receivers) {
+  receiverItems = receivers;
   clearReceiverMarkers();
   const list=$("receiver-list");
   list.replaceChildren();
@@ -224,10 +279,14 @@ function renderReceivers(receivers) {
     receiverMarkers.push(marker);
     const card=document.createElement("div"); card.className="receiver";
     const info=document.createElement("div");
-    info.innerHTML=`<strong>${safeText(item.name)}</strong><small>${safeText(item.location)} · ${item.distance_km} km<br>${item.snr_hf} dB SNR · ${item.users}/${item.users_max||"?"} users · ${item.available?"Available":"Unavailable"}${item.band_ok?"":" · frequency unsupported"}</small>`;
-    const button=document.createElement("button"); button.className="use"; button.textContent=item.available?"Use":"Unavailable"; button.disabled=!item.available;
+    const status=item.blocked?"Blocked":item.available?"Available":"Unavailable";
+    const preferenceLabel={like:"Liked",dislike:"Disliked",block:"Blocked"}[item.preference];
+    info.innerHTML=`<strong>${safeText(item.name)}</strong><small>${safeText(item.location)} · ${item.distance_km} km<br>${item.snr_hf} dB SNR · ${item.users}/${item.users_max||"?"} users · ${status}${preferenceLabel?" · "+preferenceLabel:""}${item.band_ok?"":" · frequency unsupported"}</small>`;
+    const actions=document.createElement("div"); actions.className="receiver-actions";
+    const button=document.createElement("button"); button.className="use"; button.textContent=item.blocked?"Blocked":item.available?"Use":"Unavailable"; button.disabled=!item.available;
     button.addEventListener("click",()=>selectReceiver(item.id));
-    card.append(info,button); list.append(card);
+    actions.append(button,createPreferenceControls(item));
+    card.append(info,actions); list.append(card);
   }
 }
 async function discover() {
