@@ -84,8 +84,8 @@ class RadioStreamTests(unittest.TestCase):
         self.assertIn("the next reload", rs.DEFAULT_CONFIG["overlay_black_notice"])
 
     def test_config_validation_preserves_custom_multiline_overlay_text(self):
-        reload_text = "Line one\\nLine two"
-        black_text = "Warning\\nNext line"
+        reload_text = "Line one\nLine two"
+        black_text = "Warning\nNext line"
         validated = rs.validate_config({
             "overlay_reload_notice": reload_text,
             "overlay_black_notice": black_text,
@@ -99,7 +99,7 @@ class RadioStreamTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rs.validate_config({"overlay_black_notice": "x" * 801})
         with self.assertRaises(ValueError):
-            rs.validate_config({"overlay_black_notice": "\\n".join(["line"] * 9)})
+            rs.validate_config({"overlay_black_notice": "\n".join(["line"] * 9)})
 
     def test_detects_kiwisdr_proxy_offline_page(self):
         page = """
