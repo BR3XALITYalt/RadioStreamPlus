@@ -74,6 +74,7 @@ def get_station_preference(station_id: str) -> str | None:
 
 def set_station_preference(station_id: str, preference: str) -> str | None:
     """Persist one station preference. 'none' clears the existing preference."""
+    global station_preferences
     station_id = str(station_id or "").strip()
     preference = str(preference or "").strip().lower()
     if not station_id or len(station_id) > 2048:
