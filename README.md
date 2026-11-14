@@ -38,7 +38,7 @@ The `radiostream.py` launcher checks the public `main` branch for application up
 
 During installation, `/`, `/manage`, `/overlay`, and `/sdr` are redirected to `m.html` (`Maintenance in progress...`). Already-open pages check the maintenance endpoint and redirect there too. They return automatically when the server is ready again.
 
-The updater only replaces its explicit application-file allowlist. It never updates `radiostream.py` itself, and it does not replace `radiostream.json`, directory caches, solar caches, logs, or other user data. Updating the launcher requires installing a newer project copy manually.
+The updater only replaces its explicit application-file allowlist. It never updates `radiostream.py` itself, and it does not replace `radiostream.json`, `station_preferences.json`, directory caches, solar caches, logs, or other user data. Updating the launcher requires installing a newer project copy manually.
 
 ## Find receivers on the map
 
