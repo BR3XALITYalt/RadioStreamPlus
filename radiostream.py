@@ -53,6 +53,7 @@ LAUNCHER_PATH = Path(__file__).resolve()
 APP_DIR = LAUNCHER_PATH.parent
 UPDATE_STATE_PATH = APP_DIR / ".radiostream-update.json"
 STOP_EVENT = threading.Event()
+RESTART_EVENT = threading.Event()
 UPDATE_LOCK = threading.Lock()
 
 
@@ -325,23 +326,13 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
 
         log("Installed " + ", ".join(sorted(installed)))
         if changed_python:
-            log("Python modules changed. Restarting RadioStream+.")
-            time.sleep(0.5)
-            try:
-                os.execv(sys.executable, [sys.executable, str(LAUNCHER_PATH), *sys.argv[1:]])
-            except OSError as exc:
-                # Windows and unusual launch environments may reject process
-                # replacement. Start a clean copy before exiting this process.
-                log(f"Process replacement failed ({exc}); starting a fresh process.")
-                import subprocess
-                subprocess.Popen(
-                    [sys.executable, str(LAUNCHER_PATH), *sys.argv[1:]],
-                    cwd=str(APP_DIR),
-                    close_fds=True,
-                )
-                os._exit(0)
-
-        server.set_maintenance(False, "Update complete.")
+            # Ask the main thread to stop the HTTP loop and reload the modules
+            # in place. Never spawn a replacement process: IDEs such as Thonny
+            # may not retain control of a detached child process.
+            log("Python modules changed. Reloading RadioStream+ in place.")
+            RESTART_EVENT.set()
+        else:
+            server.set_maintenance(False, "Update complete.")
         return True
     finally:
         for temporary in staged.values():
@@ -392,6 +383,18 @@ def start_updater() -> threading.Thread:
 if __name__ == "__main__":
     start_updater()
     try:
-        server.main()
+        while not STOP_EVENT.is_set():
+            RESTART_EVENT.clear()
+            server.main(STOP_EVENT, RESTART_EVENT)
+
+            if STOP_EVENT.is_set() or not RESTART_EVENT.is_set():
+                break
+
+            # Reload the implementation modules without creating another
+            # operating-system process. The launcher itself stays in control.
+            import importlib
+            log("Reloading updated Python modules.")
+            importlib.reload(server.core)
+            importlib.reload(server)
     finally:
         STOP_EVENT.set()
