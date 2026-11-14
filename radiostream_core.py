@@ -7,6 +7,7 @@ import ipaddress
 import json
 import math
 import re
+import secrets
 import socket
 import sys
 import threading
@@ -25,6 +26,8 @@ DIRECTORY_MAX_AGE = 30 * 60
 DIRECTORY_MAX_BYTES = 32 * 1024 * 1024
 HAMQSL_URL = "https://www.hamqsl.com/solarxml.php"
 APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
+# Stable pseudonymous KiwiSDR identity for this RadioStream+ process.
+RADIOSTREAM_IDENT = "rsplus-" + "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(4))
 CONFIG_PATH = APP_DIR / "radiostream.json"
 DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
 
@@ -400,6 +403,8 @@ def make_tune_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
         "vol": str(cfg["volume"]),
         # An empty "ext=" suppresses KiwiSDR's nonessential first-visit readme panel.
         "ext": "",
+        # KiwiSDR uses u= to prefill and submit its required visitor identity.
+        "u": RADIOSTREAM_IDENT,
         # KiwiSDR's native URL shortcut hides its panel UI, including Readme and Control.
         "keys": "x",
     })
