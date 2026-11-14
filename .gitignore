@@ -5,3 +5,7 @@ kiwi_directory_cache.json
 *.log
 
 solar_xml_cache.xml
+.radiostream-update.json
+.radiostream-update-*.tmp
+.*.update-*.tmp
+.*.rollback-*.tmp
