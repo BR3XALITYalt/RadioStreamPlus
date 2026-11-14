@@ -32,6 +32,14 @@ python3 radiostream.py
 
 Open `http://localhost:5056/` in a browser. The first start creates `radiostream.json` beside the script. You can edit that file directly or use the management page; saved settings are written back to it.
 
+## Automatic updates
+
+The `radiostream.py` launcher checks the public `main` branch for application updates every two minutes. It downloads changed files over HTTPS, verifies each file against its Git blob SHA-1, stages the complete update, and then replaces the files atomically. If a Python module changes, the launcher restarts RadioStream+ automatically. Otherwise, the open pages leave maintenance mode and return to the page they were using.
+
+During installation, `/`, `/manage`, `/overlay`, and `/sdr` are redirected to `m.html` (`Maintenance in progress...`). Already-open pages check the maintenance endpoint and redirect there too. They return automatically when the server is ready again.
+
+The updater only replaces its explicit application-file allowlist. It never updates `radiostream.py` itself, and it does not replace `radiostream.json`, directory caches, solar caches, logs, or other user data. Updating the launcher requires installing a newer project copy manually.
+
 ## Find receivers on the map
 
 1. Click the map to place the search center, or drag the center pin.
