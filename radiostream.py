@@ -306,14 +306,29 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
             write_update_state(commit_sha)
         except Exception:
             log("Installation failed. Restoring original files.")
-            restore_originals({path: originals[path] for path in installed})
+            try:
+                restore_originals({path: originals[path] for path in installed})
+            finally:
+                server.set_maintenance(False, "The update failed. The previous files were restored.")
             raise
 
         log("Installed " + ", ".join(sorted(installed)))
         if changed_python:
             log("Python modules changed. Restarting RadioStream+.")
             time.sleep(0.5)
-            os.execv(sys.executable, [sys.executable, *sys.argv])
+            try:
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+            except OSError as exc:
+                # Windows and unusual launch environments may reject process
+                # replacement. Start a clean copy before exiting this process.
+                log(f"Process replacement failed ({exc}); starting a fresh process.")
+                import subprocess
+                subprocess.Popen(
+                    [sys.executable, *sys.argv],
+                    cwd=str(APP_DIR),
+                    close_fds=True,
+                )
+                os._exit(0)
 
         server.set_maintenance(False, "Update complete.")
         return True
