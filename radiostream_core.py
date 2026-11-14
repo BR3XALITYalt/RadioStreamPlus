@@ -30,6 +30,75 @@ APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
 RADIOSTREAM_IDENT = "rsplus-" + "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(4))
 CONFIG_PATH = APP_DIR / "radiostream.json"
 DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
+STATION_PREFERENCES_PATH = APP_DIR / "station_preferences.json"
+STATION_PREFERENCES_LOCK = threading.RLock()
+station_preferences: dict[str, str] = {}
+
+
+def load_station_preferences() -> None:
+    """Load liked, disliked, and blocked receiver IDs from the local preferences file."""
+    global station_preferences
+    try:
+        payload = json.loads(STATION_PREFERENCES_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        with STATION_PREFERENCES_LOCK:
+            station_preferences = {}
+        return
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[preferences] Could not load station preferences: {exc}", file=sys.stderr)
+        return
+
+    raw_stations = payload.get("stations") if isinstance(payload, dict) else None
+    if not isinstance(raw_stations, dict):
+        print("[preferences] Ignoring invalid station preferences file", file=sys.stderr)
+        return
+
+    cleaned: dict[str, str] = {}
+    for station_id, preference in raw_stations.items():
+        station_id = str(station_id).strip()
+        if (
+            station_id
+            and len(station_id) <= 2048
+            and preference in {"like", "dislike", "block"}
+        ):
+            cleaned[station_id] = preference
+    with STATION_PREFERENCES_LOCK:
+        station_preferences = cleaned
+
+
+def get_station_preference(station_id: str) -> str | None:
+    with STATION_PREFERENCES_LOCK:
+        return station_preferences.get(str(station_id))
+
+
+def set_station_preference(station_id: str, preference: str) -> str | None:
+    """Persist one station preference. 'none' clears the existing preference."""
+    station_id = str(station_id or "").strip()
+    preference = str(preference or "").strip().lower()
+    if not station_id or len(station_id) > 2048:
+        raise ValueError("A valid station ID is required")
+    if preference not in {"like", "dislike", "block", "none"}:
+        raise ValueError("Preference must be like, dislike, block, or none")
+
+    with STATION_PREFERENCES_LOCK:
+        updated = dict(station_preferences)
+        if preference == "none":
+            updated.pop(station_id, None)
+        else:
+            updated[station_id] = preference
+        if len(updated) > 20000:
+            raise ValueError("The station preference list is full")
+
+        payload = json.dumps({"schema": 1, "stations": updated}, indent=2) + "\\n"
+        temporary = STATION_PREFERENCES_PATH.with_suffix(".json.tmp")
+        try:
+            temporary.write_text(payload, encoding="utf-8")
+            temporary.replace(STATION_PREFERENCES_PATH)
+        except OSError as exc:
+            raise RuntimeError(f"Could not save station preferences: {exc}") from exc
+
+        station_preferences = updated
+    return None if preference == "none" else preference
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "center_lat": 20.0,
@@ -356,10 +425,17 @@ def parse_receiver(receiver: dict[str, Any], cfg: dict[str, Any]) -> dict[str, A
     offline = receiver.get("offline") is True or str(receiver.get("offline", "")).strip().casefold() in {"yes", "true", "1", "offline", "down"}
     flagged = receiver.get("flagged") is True or str(receiver.get("flagged", "")).strip().casefold() in {"yes", "true", "1", "flagged"}
     full = users_max > 0 and users >= users_max
-    available = not offline and not flagged and not full and band_ok
+    directory_available = not offline and not flagged and not full and band_ok
+    station_id = receiver_id(receiver)
+    preference = get_station_preference(station_id)
+    blocked = preference == "block"
+    available = directory_available and not blocked
     score = snr_hf * 1.4 + (100.0 - occupancy) * 0.4
     return {
-        "id": receiver_id(receiver),
+        "id": station_id,
+        "preference": preference,
+        "blocked": blocked,
+        "directory_available": directory_available,
         "url": url.rstrip("/"),
         "name": str(receiver.get("name") or parsed_url.hostname)[:160],
         "location": str(receiver.get("loc") or "Location not listed")[:160],
@@ -394,6 +470,7 @@ def discover_receivers() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "directory_count": len(payload.get("receivers", [])),
         "found_count": len(found),
         "available_count": sum(1 for item in found if item["available"]),
+        "blocked_count": sum(1 for item in found if item["blocked"]),
         "fetched_at": directory_fetched_at,
         "cache_error": directory_error,
     }
