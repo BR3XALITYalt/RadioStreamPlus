@@ -77,6 +77,30 @@ class RadioStreamTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rs.validate_config({"mode": "unsupported"})
 
+    def test_overlay_message_defaults_match_current_artwork(self):
+        self.assertIn("Every 30 minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
+        self.assertIn("the waterfall", rs.DEFAULT_CONFIG["overlay_reload_notice"])
+        self.assertIn("something crashed", rs.DEFAULT_CONFIG["overlay_black_notice"])
+        self.assertIn("the next reload", rs.DEFAULT_CONFIG["overlay_black_notice"])
+
+    def test_config_validation_preserves_custom_multiline_overlay_text(self):
+        reload_text = "Line one\\nLine two"
+        black_text = "Warning\\nNext line"
+        validated = rs.validate_config({
+            "overlay_reload_notice": reload_text,
+            "overlay_black_notice": black_text,
+        })
+        self.assertEqual(validated["overlay_reload_notice"], reload_text)
+        self.assertEqual(validated["overlay_black_notice"], black_text)
+
+    def test_config_validation_rejects_invalid_overlay_text(self):
+        with self.assertRaises(ValueError):
+            rs.validate_config({"overlay_reload_notice": 123})
+        with self.assertRaises(ValueError):
+            rs.validate_config({"overlay_black_notice": "x" * 801})
+        with self.assertRaises(ValueError):
+            rs.validate_config({"overlay_black_notice": "\\n".join(["line"] * 9)})
+
     def test_detects_kiwisdr_proxy_offline_page(self):
         page = """
             <html><body>
