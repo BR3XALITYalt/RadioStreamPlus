@@ -98,32 +98,34 @@ class RadioStreamTests(unittest.TestCase):
         page = "<html><title>KiwiSDR</title><body>Welcome to the receiver</body></html>"
         self.assertFalse(rs.is_offline_receiver_page(page))
 
-    def test_detects_openwebrx_page_from_source_notice(self):
+    def test_detects_visible_enter_password_prompt(self):
+        page = """
+            <html><body>
+              <div>Enter <strong>Password</strong>:</div>
+            </body></html>
+        """
+        self.assertTrue(rs.is_password_prompt_page(page))
+
+    def test_password_prompt_detection_is_case_insensitive(self):
+        self.assertTrue(rs.is_password_prompt_page("<p>ENTER PASSWORD:</p>"))
+
+    def test_ignores_password_text_inside_scripts_and_comments(self):
+        page = """
+            <!-- Enter Password: is only an example -->
+            <script>const label = "Enter Password:";</script>
+            <html><body>Welcome to the receiver</body></html>
+        """
+        self.assertFalse(rs.is_password_prompt_page(page))
+
+    def test_does_not_reject_openwebrx_page_without_password_prompt(self):
         page = """
             <!DOCTYPE HTML>
             <!-- OpenWebRX (c) Copyright 2013-2014 Andras Retzler -->
             <!-- This file is part of OpenWebRX. -->
-            <html><head><script src="kiwisdr.min.js"></script></head></html>
-        """
-        self.assertTrue(rs.is_openwebrx_page(page))
-
-    def test_detects_openwebrx_page_from_structure_when_comment_is_missing(self):
-        page = """
-            <html>
-              <script src="kiwisdr.min.js"></script>
-              <div id="id-topbar-container"></div>
-              <div id="id-panels-container"></div>
-              <div id="id-waterfall-container"></div>
-            </html>
-        """
-        self.assertTrue(rs.is_openwebrx_page(page))
-
-    def test_does_not_misidentify_normal_kiwisdr_page_as_openwebrx(self):
-        page = """
-            <html><title>KiwiSDR</title>
+            <html><head><script src="kiwisdr.min.js"></script></head>
             <body>Welcome to the receiver</body></html>
         """
-        self.assertFalse(rs.is_openwebrx_page(page))
+        self.assertFalse(rs.is_password_prompt_page(page))
 
     def test_directory_schema_validation(self):
         good = {"schema": 1, "receivers": [self.sample()]}
