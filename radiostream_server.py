@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import sys
 import threading
+import xml.etree.ElementTree as ET
 import time
 import urllib.error
 import urllib.parse
@@ -21,10 +23,13 @@ STATE_LOCK = threading.RLock()
 current_receiver: dict[str, Any] | None = None
 current_started_at = 0.0
 last_receiver_ids: list[str] = []
+last_receiver_error: str | None = None
+SOLAR_CACHE_PATH = APP_DIR / "solar_xml_cache.xml"
+SOLAR_CACHE_MAX_AGE = 14 * 24 * 60 * 60
 
 
 def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
-    global current_receiver, current_started_at, last_receiver_ids
+    global current_receiver, current_started_at, last_receiver_ids, last_receiver_error
     try:
         receivers, _ = core.discover_receivers()
     except RuntimeError as exc:
@@ -32,6 +37,7 @@ def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
         with STATE_LOCK:
             current_receiver = None
             current_started_at = 0.0
+            last_receiver_error = str(exc)
         return None
 
     candidates = [item for item in receivers if item["available"]]
@@ -39,39 +45,71 @@ def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
         with STATE_LOCK:
             current_receiver = None
             current_started_at = 0.0
+            last_receiver_error = "No receivers in range are marked available by the public directory."
         return None
 
     with STATE_LOCK:
         current_id = current_receiver["id"] if current_receiver else None
-        recent = set(last_receiver_ids[-max(1, len(candidates) - 1):])
-        chosen = None
         if current_id and not force_next:
-            chosen = next((item for item in candidates if item["id"] == current_id), None)
+            current = next((item for item in candidates if item["id"] == current_id), None)
+            ordered = ([current] if current else []) + [
+                item for item in candidates if item["id"] != current_id
+            ]
+        else:
+            recent = set(last_receiver_ids[-max(1, len(candidates) - 1):])
+            ordered = [item for item in candidates if item["id"] not in recent]
+            if not ordered:
+                ordered = list(candidates)
+            if current_id and len(ordered) > 1:
+                ordered = [item for item in ordered if item["id"] != current_id] or ordered
 
-        if force_next or chosen is None:
-            # Avoid recently used stations where possible. A one-receiver
-            # search area naturally remains on its only candidate.
-            pool = [item for item in candidates if item["id"] not in recent]
-            if not pool:
-                pool = candidates
-            if current_id and len(pool) > 1:
-                pool = [item for item in pool if item["id"] != current_id] or pool
-            chosen = pool[0]
+    failures: list[str] = []
+    chosen = None
+    for item in ordered[:core.MAX_RECEIVER_PROBES]:
+        online, reason = core.check_receiver_online(item)
+        if online:
+            chosen = item
+            break
+        failures.append(f"{item['name']}: {reason}")
+
+    with STATE_LOCK:
+        if chosen is None:
+            current_receiver = None
+            current_started_at = 0.0
+            checked = min(len(ordered), core.MAX_RECEIVER_PROBES)
+            last_receiver_error = (
+                f"No reachable receiver was found (checked {checked} of {len(ordered)} candidates). "
+                + "; ".join(failures[:3])
+            )
+            return None
 
         current_receiver = chosen
         current_started_at = time.monotonic()
         last_receiver_ids.append(chosen["id"])
         last_receiver_ids = last_receiver_ids[-100:]
+        last_receiver_error = None
         return dict(chosen)
 
 
 def get_state() -> dict[str, Any]:
-    global current_receiver, current_started_at
+    global current_receiver, current_started_at, last_receiver_error
     with core.CONFIG_LOCK:
         cfg = dict(core.config)
     with STATE_LOCK:
         current = dict(current_receiver) if current_receiver else None
         started = current_started_at
+        receiver_error = last_receiver_error
+
+    if current:
+        online, reason = core.check_receiver_online(current)
+        if not online:
+            with STATE_LOCK:
+                last_receiver_error = f"{current['name']}: {reason}"
+            pick_next_receiver(force_next=True)
+            with STATE_LOCK:
+                current = dict(current_receiver) if current_receiver else None
+                started = current_started_at
+                receiver_error = last_receiver_error
 
     rotation_seconds = float(cfg["rotation_minutes"]) * 60
     elapsed = time.monotonic() - started if started else 0.0
@@ -95,6 +133,7 @@ def get_state() -> dict[str, Any]:
         "rotation_minutes": cfg["rotation_minutes"],
         "config": cfg,
         "directory_error": core.directory_error,
+        "receiver_error": receiver_error,
     }
 
 
@@ -114,12 +153,14 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
 
-    def send_bytes(self, body: bytes, content_type: str, status: int = 200) -> None:
+    def send_bytes(self, body: bytes, content_type: str, status: int = 200, headers: dict[str, str] | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -170,6 +211,11 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             self.send_file("sdr.html", "text/html")
         elif route == "/app.js":
             self.send_file("app.js", "application/javascript")
+        elif route == "/favicon.ico":
+            self.send_bytes(
+                b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#20262b"/><path d="M7 12h18M7 17h13M7 22h8" stroke="#8cc7ff" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="22" r="3" fill="#72cf9a"/></svg>',
+                "image/svg+xml",
+            )
         elif route == "/api/state":
             try:
                 self.send_json(get_state())
@@ -184,17 +230,61 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_json({"error": str(exc)}, 503)
         elif route == "/api/solar":
-            try:
-                request_obj = urllib.request.Request(
-                    core.HAMQSL_URL, headers={"User-Agent": core.APP_USER_AGENT}
+            error_text = "No solar feed response was received"
+            body = None
+            for solar_url in (
+                "https://www.hamqsl.com/solarxml.php",
+                "https://hamqsl.com/solarxml.php",
+            ):
+                try:
+                    request_obj = urllib.request.Request(
+                        solar_url,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (compatible; RadioStreamPlus/1.0)",
+                            "Accept": "application/xml,text/xml,*/*;q=0.8",
+                        },
+                    )
+                    with urllib.request.urlopen(request_obj, timeout=12) as response:
+                        candidate = response.read(1024 * 1024 + 1)
+                    if len(candidate) > 1024 * 1024:
+                        raise ValueError("HamQSL response exceeded 1 MB")
+                    root = ET.fromstring(candidate)
+                    if root.tag.casefold() != "solar":
+                        raise ValueError("HamQSL returned an unexpected XML document")
+                    body = candidate
+                    break
+                except (OSError, urllib.error.URLError, TimeoutError, ValueError, ET.ParseError) as exc:
+                    error_text = f"{solar_url}: {exc}"
+                    print(f"[solar] {error_text}", file=sys.stderr)
+
+            if body is not None:
+                try:
+                    temporary = SOLAR_CACHE_PATH.with_suffix(".xml.tmp")
+                    temporary.write_bytes(body)
+                    temporary.replace(SOLAR_CACHE_PATH)
+                except OSError as cache_error:
+                    print(f"[solar] Could not save XML cache: {cache_error}", file=sys.stderr)
+                self.send_bytes(
+                    body,
+                    "application/xml; charset=utf-8",
+                    headers={"X-RadioStream-Cache": "fresh"},
                 )
-                with urllib.request.urlopen(request_obj, timeout=15) as response:
-                    body = response.read(1024 * 1024 + 1)
-                if len(body) > 1024 * 1024:
-                    raise ValueError("HamQSL response exceeded 1 MB")
-                self.send_bytes(body, "application/xml; charset=utf-8")
-            except (OSError, urllib.error.URLError, TimeoutError, ValueError) as exc:
-                self.send_json({"error": f"HamQSL request failed: {exc}"}, 502)
+            else:
+                try:
+                    cache_age = time.time() - SOLAR_CACHE_PATH.stat().st_mtime
+                    if 0 <= cache_age <= SOLAR_CACHE_MAX_AGE:
+                        cached_body = SOLAR_CACHE_PATH.read_bytes()
+                        root = ET.fromstring(cached_body)
+                        if root.tag.casefold() == "solar":
+                            self.send_bytes(
+                                cached_body,
+                                "application/xml; charset=utf-8",
+                                headers={"X-RadioStream-Cache": "stale"},
+                            )
+                            return
+                except (OSError, ET.ParseError) as cache_error:
+                    print(f"[solar] No usable cached XML: {cache_error}", file=sys.stderr)
+                self.send_json({"error": f"HamQSL request failed: {error_text}"}, 502)
         elif route == "/api/health":
             self.send_json({
                 "ok": True,
@@ -205,7 +295,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self) -> None:
-        global current_receiver, current_started_at, last_receiver_ids
+        global current_receiver, current_started_at, last_receiver_ids, last_receiver_error
         if not self.ensure_local_request():
             return
         route = urllib.parse.urlsplit(self.path).path
@@ -219,6 +309,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                     current_receiver = None
                     current_started_at = 0.0
                     last_receiver_ids = []
+                    last_receiver_error = None
                 self.send_json({"ok": True, "config": dict(core.config)})
 
             elif route == "/api/select":
@@ -234,6 +325,12 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                         {"error": "That receiver is no longer available in this range"},
                         404,
                     )
+                    return
+                online, reason = core.check_receiver_online(chosen)
+                if not online:
+                    with STATE_LOCK:
+                        last_receiver_error = f"{chosen['name']}: {reason}"
+                    self.send_json({"error": f"Receiver is not reachable: {reason}"}, 503)
                     return
                 with STATE_LOCK:
                     current_receiver = chosen
