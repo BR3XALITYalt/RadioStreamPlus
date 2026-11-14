@@ -30,12 +30,24 @@ const station=document.getElementById("station");
 const message=document.getElementById("message");
 let activeUrl="";
 let polling=false;
+let consecutiveFailures=0;
+const SERVER_FAILURE_LIMIT=3;
+
+function stopReceiver(reason){
+  activeUrl="";
+  frame.src="about:blank";
+  message.hidden=false;
+  message.textContent=reason;
+  station.innerHTML="<strong>RadioStream+</strong>Receiver stream stopped";
+}
+
 async function refresh(){
   if(polling)return; polling=true;
   try{
     const response=await fetch("/api/state",{cache:"no-store"});
     const state=await response.json();
     if(!response.ok)throw new Error(state.error||`HTTP ${response.status}`);
+    consecutiveFailures=0;
     if(state.current){
       const item=state.current;
       const url=item.tune_url;
@@ -47,7 +59,14 @@ async function refresh(){
       message.textContent=state.receiver_error ? `No reachable KiwiSDR is available. ${state.receiver_error}` : "No available KiwiSDR found in the selected range. Configure the map and radius in RadioStream+.";
       station.innerHTML="<strong>RadioStream+</strong>No receiver selected";
     }
-  }catch(error){message.hidden=false;message.textContent=`RadioStream+ server error: ${error.message}`;}
+  }catch(error){
+    consecutiveFailures++;
+    message.hidden=false;
+    message.textContent=`RadioStream+ server error: ${error.message}`;
+    if(consecutiveFailures>=SERVER_FAILURE_LIMIT && activeUrl){
+      stopReceiver("RadioStream+ is offline. The KiwiSDR connection was stopped.");
+    }
+  }
   finally{polling=false;}
 }
 function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
