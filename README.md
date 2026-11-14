@@ -78,7 +78,7 @@ Changing the modulation mode in the management page applies that mode's default 
 - `overlay_reload_notice`: multiline text shown in the OBS overlay to describe the periodic receiver reload.
 - `overlay_black_notice`: multiline text shown in the OBS overlay if the receiver window stays black.
 
-Both overlay messages can be edited in the management page and are saved in `radiostream.json`. Keep their line breaks where you want the lines to appear; each message supports up to 8 lines and 800 characters. Existing configuration files receive the default messages automatically when loaded.
+Both overlay messages can be edited in the management page and are saved in `radiostream.json`. Keep their line breaks where you want the lines to appear; each message supports up to 8 lines and 800 characters. Older configuration files are migrated automatically on startup, with the default messages written back without changing their existing radio settings.
 
 Frequency, mode, zoom, volume, and passband settings are applied consistently when switching between receivers.
 
