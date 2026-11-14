@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>RadioStream+ - Maintenance</title>
+<style>
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0;background:#111518;color:#e9eef1;font-family:Arial,Helvetica,sans-serif}
+main{width:min(560px,calc(100% - 40px));margin:18vh auto 0}
+h1{margin:0 0 12px;font-size:clamp(24px,4vw,34px);font-weight:600}
+p{margin:0;color:#aeb9c0;line-height:1.6}
+#status{margin-top:22px;color:#dbe5eb;font-size:13px}
+.track{height:3px;margin-top:14px;background:#34414a;overflow:hidden}
+.track:after{display:block;width:35%;height:100%;background:#8cc7ff;content:"";animation:move 1.5s ease-in-out infinite alternate}
+@keyframes move{from{transform:translateX(-100%)}to{transform:translateX(285%)}}
+@media(prefers-reduced-motion:reduce){.track:after{animation:none;width:100%}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Maintenance in progress...</h1>
+  <p>RadioStream+ is updating its application files. The server will return automatically when the update is complete.</p>
+  <div id="status" role="status" aria-live="polite">Waiting for the updater...</div>
+  <div class="track" aria-hidden="true"></div>
+</main>
+<script>
+"use strict";
+const statusNode = document.getElementById("status");
+const params = new URLSearchParams(location.search);
+const requestedPath = params.get("return") || "/";
+const returnPath = requestedPath.startsWith("/") && !requestedPath.startsWith("//") && !requestedPath.includes("\\")
+  ? requestedPath
+  : "/";
+let checking = false;
+
+async function checkMaintenance() {
+  if (checking) return;
+  checking = true;
+  try {
+    const response = await fetch("/api/maintenance", {cache:"no-store"});
+    const state = await response.json();
+    if (state.active) {
+      statusNode.textContent = state.message || "Applying update...";
+    } else {
+      statusNode.textContent = "Update complete. Returning to RadioStream+...";
+      location.replace(returnPath);
+    }
+  } catch (_) {
+    statusNode.textContent = "The server is restarting. This page will reconnect automatically.";
+  } finally {
+    checking = false;
+  }
+}
+
+checkMaintenance();
+setInterval(checkMaintenance, 1500);
+</script>
+</body>
+</html>
