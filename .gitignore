@@ -9,4 +9,6 @@ solar_xml_cache.xml
 .radiostream-update-*.tmp
 .*.update-*.tmp
 .*.rollback-*.tmp
-.solar_last_attempt\nstation_preferences.json\n.station_preferences.json.tmp\n
+.solar_last_attempt
+station_preferences.json
+.station_preferences.json.tmp
