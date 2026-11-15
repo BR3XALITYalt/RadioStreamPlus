@@ -2,6 +2,7 @@
 """RadioStream+ receiver directory, geospatial filtering, and tune settings."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import html
 import ipaddress
 import json
@@ -27,6 +28,10 @@ DIRECTORY_MAX_BYTES = 32 * 1024 * 1024
 RECEIVERBOOK_MAP_URL = "https://www.receiverbook.de/map?type=openwebrx"
 RECEIVERBOOK_CACHE_MAX_AGE = 30 * 60
 RECEIVERBOOK_MAX_BYTES = 12 * 1024 * 1024
+OPENWEBRX_STATUS_TIMEOUT = 2.5
+OPENWEBRX_STATUS_MAX_BYTES = 512 * 1024
+OPENWEBRX_BAND_CACHE_MAX_AGE = 30 * 60
+OPENWEBRX_BAND_PROBE_WORKERS = 16
 HAMQSL_URL = "https://www.hamqsl.com/solarxml.php"
 APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
 
@@ -347,7 +352,7 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
         "center_lat": clamp_number(base["center_lat"], "Latitude", -90, 90),
         "center_lon": clamp_number(base["center_lon"], "Longitude", -180, 180),
         "radius_km": clamp_number(base["radius_km"], "Range", 1, 20000),
-        "frequency_khz": clamp_number(base["frequency_khz"], "Frequency (kHz)", 10, 30000),
+        "frequency_khz": clamp_number(base["frequency_khz"], "Frequency (kHz)", 0.001, 300000000),
         "mode": str(base["mode"]).lower(),
         "zoom": clamp_number(base["zoom"], "KiwiSDR zoom", 0, 14, integer=True),
         "volume": clamp_number(base["volume"], "Volume", 0, 200, integer=True),
@@ -485,7 +490,7 @@ def validate_receiverbook_cache(payload: Any) -> list[dict[str, Any]]:
         if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (abs(lat) < 1e-9 and abs(lon) < 1e-9):
             continue
         seen.add(url)
-        cleaned.append({
+        cleaned_item: dict[str, Any] = {
             "id": "receiverbook:" + url,
             "name": str(item.get("name") or urllib.parse.urlsplit(url).hostname)[:160],
             "station": str(item.get("station") or "")[:160],
@@ -494,9 +499,30 @@ def validate_receiverbook_cache(payload: Any) -> list[dict[str, Any]]:
             "url": url,
             "lat": lat,
             "lon": lon,
-        })
+        }
+        raw_ranges = item.get("frequency_ranges")
+        checked_at = item.get("frequency_checked_at")
+        if isinstance(raw_ranges, list) and len(raw_ranges) <= 128:
+            frequency_ranges: list[dict[str, float]] = []
+            for band in raw_ranges:
+                if not isinstance(band, dict):
+                    continue
+                try:
+                    low_hz = float(band.get("low_hz"))
+                    high_hz = float(band.get("high_hz"))
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(low_hz) and math.isfinite(high_hz) and 0 <= low_hz < high_hz:
+                    frequency_ranges.append({"low_hz": low_hz, "high_hz": high_hz})
+            try:
+                checked_at = float(checked_at)
+            except (TypeError, ValueError):
+                checked_at = None
+            if checked_at is not None and math.isfinite(checked_at) and checked_at > 0:
+                cleaned_item["frequency_ranges"] = frequency_ranges
+                cleaned_item["frequency_checked_at"] = checked_at
+        cleaned.append(cleaned_item)
     return cleaned
-
 
 def parse_receiverbook_map(body: str) -> list[dict[str, Any]]:
     match = re.search(r"\b(?:var|let|const)\s+receivers\s*=\s*", body)
@@ -562,6 +588,22 @@ def load_disk_receiverbook_directory() -> None:
         print(f"[receiverbook] Ignoring invalid disk cache: {exc}", file=sys.stderr)
 
 
+def save_receiverbook_cache() -> None:
+    """Persist Receiverbook records, including recently checked frequency ranges."""
+    with RECEIVERBOOK_LOCK:
+        payload = {
+            "schema": 1,
+            "fetched_at": receiverbook_fetched_at,
+            "receivers": receiverbook_data or [],
+        }
+        try:
+            temporary = RECEIVERBOOK_CACHE_PATH.with_suffix(".json.tmp")
+            temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            temporary.replace(RECEIVERBOOK_CACHE_PATH)
+        except OSError as exc:
+            print(f"[receiverbook] Could not persist cache: {exc}", file=sys.stderr)
+
+
 def fetch_receiverbook_directory(force: bool = False) -> list[dict[str, Any]]:
     global receiverbook_data, receiverbook_fetched_monotonic, receiverbook_fetched_at, receiverbook_error
     with RECEIVERBOOK_LOCK:
@@ -581,18 +623,22 @@ def fetch_receiverbook_directory(force: bool = False) -> list[dict[str, Any]]:
             if len(body) > RECEIVERBOOK_MAX_BYTES:
                 raise ValueError("Receiverbook map page exceeded the 12 MB safety limit")
             records = parse_receiverbook_map(body.decode("utf-8"))
+            previous_by_url = {
+                item.get("url"): item
+                for item in (receiverbook_data or [])
+                if isinstance(item, dict) and item.get("url")
+            }
+            for record in records:
+                previous = previous_by_url.get(record["url"])
+                if previous and "frequency_checked_at" in previous:
+                    record["frequency_ranges"] = previous.get("frequency_ranges", [])
+                    record["frequency_checked_at"] = previous["frequency_checked_at"]
             fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            payload = {"schema": 1, "fetched_at": fetched_at, "receivers": records}
             receiverbook_data = records
             receiverbook_fetched_at = fetched_at
             receiverbook_fetched_monotonic = time.monotonic()
             receiverbook_error = None
-            try:
-                temporary = RECEIVERBOOK_CACHE_PATH.with_suffix(".json.tmp")
-                temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-                temporary.replace(RECEIVERBOOK_CACHE_PATH)
-            except OSError as exc:
-                print(f"[receiverbook] Could not persist cache: {exc}", file=sys.stderr)
+            save_receiverbook_cache()
             return records
         except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             receiverbook_error = str(exc)
@@ -602,6 +648,117 @@ def fetch_receiverbook_directory(force: bool = False) -> list[dict[str, Any]]:
                 return receiverbook_data
             raise RuntimeError(f"Could not download the Receiverbook OpenWebRX directory: {exc}") from exc
 
+
+def _append_frequency_range(
+    ranges: list[dict[str, float]],
+    low_hz: Any,
+    high_hz: Any,
+) -> None:
+    try:
+        low = float(low_hz)
+        high = float(high_hz)
+    except (TypeError, ValueError):
+        return
+    if math.isfinite(low) and math.isfinite(high) and 0 <= low < high:
+        ranges.append({"low_hz": low, "high_hz": high})
+
+
+def parse_openwebrx_plus_frequency_ranges(payload: Any) -> list[dict[str, float]]:
+    """Read profile frequency coverage from an OpenWebRX+ status.json response."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("sdrs"), list):
+        return []
+    ranges: list[dict[str, float]] = []
+    for sdr in payload["sdrs"]:
+        if not isinstance(sdr, dict) or not isinstance(sdr.get("profiles"), list):
+            continue
+        for profile in sdr["profiles"]:
+            if not isinstance(profile, dict):
+                continue
+            center = profile.get("center_freq")
+            sample_rate = profile.get("sample_rate", profile.get("samp_rate"))
+            try:
+                center_hz = float(center)
+                width_hz = float(sample_rate)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(center_hz) or not math.isfinite(width_hz) or width_hz <= 0:
+                continue
+            _append_frequency_range(ranges, center_hz - width_hz / 2, center_hz + width_hz / 2)
+    return ranges
+
+
+def parse_openwebrx_classic_frequency_ranges(status_text: str) -> list[dict[str, float]]:
+    """Read the advertised bands field from a classic OpenWebRX /status response."""
+    fields: dict[str, str] = {}
+    for line in status_text.splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            fields[key.strip().casefold()] = value.strip()
+    match = re.fullmatch(r"([0-9]+)-([0-9]+)", fields.get("bands", ""))
+    if not match:
+        return []
+    ranges: list[dict[str, float]] = []
+    _append_frequency_range(ranges, match.group(1), match.group(2))
+    return ranges
+
+
+def _fetch_openwebrx_status(receiver_url: str, endpoint: str, accept: str) -> bytes:
+    parsed = urllib.parse.urlsplit(receiver_url)
+    if not parsed.hostname:
+        return b""
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    if not _public_hostname(parsed.hostname, port):
+        return b""
+    path = (parsed.path.rstrip("/") + "/" + endpoint.lstrip("/")) or ("/" + endpoint.lstrip("/"))
+    status_url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+    request_obj = urllib.request.Request(
+        status_url,
+        headers={"User-Agent": APP_USER_AGENT, "Accept": accept},
+    )
+    opener = urllib.request.build_opener(_PublicOnlyRedirectHandler())
+    with opener.open(request_obj, timeout=OPENWEBRX_STATUS_TIMEOUT) as response:
+        body = response.read(OPENWEBRX_STATUS_MAX_BYTES + 1)
+    if len(body) > OPENWEBRX_STATUS_MAX_BYTES:
+        raise ValueError("OpenWebRX status response exceeded the size limit")
+    return body
+
+
+def fetch_openwebrx_frequency_ranges(receiver: dict[str, Any]) -> list[dict[str, float]]:
+    """Fetch and cache the receiver's published tuning ranges."""
+    checked_at = receiver.get("frequency_checked_at")
+    try:
+        checked_at = float(checked_at)
+    except (TypeError, ValueError):
+        checked_at = 0.0
+    if (
+        checked_at > 0
+        and math.isfinite(checked_at)
+        and time.time() - checked_at < OPENWEBRX_BAND_CACHE_MAX_AGE
+        and isinstance(receiver.get("frequency_ranges"), list)
+    ):
+        return receiver["frequency_ranges"]
+
+    ranges: list[dict[str, float]] = []
+    base_url = normalize_receiverbook_url(receiver.get("url"))
+    if base_url:
+        try:
+            body = _fetch_openwebrx_status(base_url, "status.json", "application/json")
+            if body:
+                ranges = parse_openwebrx_plus_frequency_ranges(json.loads(body.decode("utf-8")))
+        except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            ranges = []
+
+        if not ranges:
+            try:
+                body = _fetch_openwebrx_status(base_url, "status", "text/plain")
+                if body:
+                    ranges = parse_openwebrx_classic_frequency_ranges(body.decode("utf-8", "replace"))
+            except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, ValueError):
+                ranges = []
+
+    receiver["frequency_ranges"] = ranges
+    receiver["frequency_checked_at"] = time.time()
+    return ranges
 
 def make_openwebrx_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
     base_url = normalize_receiverbook_url(receiver.get("url"))
@@ -629,22 +786,52 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
         error = receiverbook_error
     with CONFIG_LOCK:
         cfg = dict(config)
-    found: list[dict[str, Any]] = []
+
+    candidates: list[tuple[dict[str, Any], float]] = []
     for item in records:
         distance = haversine_km(cfg["center_lat"], cfg["center_lon"], item["lat"], item["lon"])
-        if distance > cfg["radius_km"]:
+        if distance <= cfg["radius_km"]:
+            candidates.append((item, distance))
+
+    if candidates:
+        with ThreadPoolExecutor(max_workers=OPENWEBRX_BAND_PROBE_WORKERS) as executor:
+            futures = [
+                executor.submit(fetch_openwebrx_frequency_ranges, item)
+                for item, _distance in candidates
+            ]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    print(f"[receiverbook] Could not read receiver frequency range: {exc}", file=sys.stderr)
+
+    frequency_hz = round(float(cfg["frequency_khz"]) * 1000)
+    found: list[dict[str, Any]] = []
+    for item, distance in candidates:
+        ranges = item.get("frequency_ranges") or []
+        frequency_supported = any(
+            band["low_hz"] <= frequency_hz <= band["high_hz"]
+            for band in ranges
+        )
+        if not frequency_supported:
             continue
         found.append({
             **item,
             "distance_km": round(distance, 1),
             "source": "Receiverbook",
             "listed_online": True,
+            "frequency_supported": True,
             "tune_url": make_openwebrx_url(item, cfg),
         })
+
+    if candidates:
+        save_receiverbook_cache()
     found.sort(key=lambda item: (item["distance_km"], item["name"].casefold()))
     meta = {
         "directory_count": len(records),
+        "nearby_count": len(candidates),
         "found_count": len(found),
+        "frequency_hz": frequency_hz,
         "fetched_at": receiverbook_fetched_at,
         "cache_error": error,
         "directory_url": RECEIVERBOOK_MAP_URL,
