@@ -125,6 +125,8 @@ def set_station_preference(station_id: str, preference: str) -> str | None:
         station_preferences = updated
     return None if preference == "none" else preference
 
+MAX_FREQUENCY_LINKS = 32
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "center_lat": 20.0,
     "center_lon": 0.0,
@@ -401,8 +403,8 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
         )
         raw_links[active_for_update]["frequency_khz"] = raw["frequency_khz"]
 
-    if not isinstance(raw_links, list) or not 1 <= len(raw_links) <= 32:
-        raise ValueError("Add between 1 and 32 frequency links")
+    if not isinstance(raw_links, list) or not 1 <= len(raw_links) <= MAX_FREQUENCY_LINKS:
+        raise ValueError(f"Add between 1 and {MAX_FREQUENCY_LINKS} frequency links")
 
     frequency_links: list[dict[str, Any]] = []
     for index, item in enumerate(raw_links):
