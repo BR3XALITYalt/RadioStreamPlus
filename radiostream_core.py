@@ -502,7 +502,7 @@ def validate_receiverbook_cache(payload: Any) -> list[dict[str, Any]]:
         }
         raw_ranges = item.get("frequency_ranges")
         checked_at = item.get("frequency_checked_at")
-        if isinstance(raw_ranges, list) and len(raw_ranges) <= 128:
+        if isinstance(raw_ranges, list) and len(raw_ranges) <= 4096:
             frequency_ranges: list[dict[str, float]] = []
             for band in raw_ranges:
                 if not isinstance(band, dict):
@@ -523,6 +523,7 @@ def validate_receiverbook_cache(payload: Any) -> list[dict[str, Any]]:
                 cleaned_item["frequency_checked_at"] = checked_at
         cleaned.append(cleaned_item)
     return cleaned
+
 
 def parse_receiverbook_map(body: str) -> list[dict[str, Any]]:
     match = re.search(r"\b(?:var|let|const)\s+receivers\s*=\s*", body)
@@ -759,6 +760,7 @@ def fetch_openwebrx_frequency_ranges(receiver: dict[str, Any]) -> list[dict[str,
     receiver["frequency_ranges"] = ranges
     receiver["frequency_checked_at"] = time.time()
     return ranges
+
 
 def make_openwebrx_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
     base_url = normalize_receiverbook_url(receiver.get("url"))
