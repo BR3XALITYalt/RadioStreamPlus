@@ -814,6 +814,21 @@ async function discover() {
     $("result-line").style.color="#f28b82";
   } finally { $("scan").disabled=false; }
 }
+let statusPolling=false;
+async function refreshRadioStatus() {
+  if(statusPolling)return;
+  statusPolling=true;
+  try {
+    const state=await api("/api/state");
+    showCurrent(state);
+  } catch(error) {
+    setStatus(error.message,true);
+  } finally {
+    statusPolling=false;
+  }
+}
+setInterval(refreshRadioStatus,5000);
+
 $("scan").addEventListener("click",discover);
 $("save").addEventListener("click",async()=>{try{await saveSettings();}catch(e){setStatus(e.message,true);}});
 $("next").addEventListener("click",async()=>{try{await saveSettings(false);const data=await api("/api/next",{});showCurrent(data.state);}catch(e){setStatus(e.message,true);}});
