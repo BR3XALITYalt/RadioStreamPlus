@@ -77,6 +77,10 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .advanced-panel[hidden] { display:none; }
 .advanced-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
 .advanced-help { max-width:850px; color:#aeb8bf; font-size:12px; line-height:1.5; }
+.confirm-dialog { width:min(420px,calc(100% - 28px)); padding:18px; border:1px solid #46525c; border-radius:7px; background:#191e22; color:#edf0f2; }
+.confirm-dialog::backdrop { background:rgba(0,0,0,.68); }
+.confirm-dialog p { margin:0; line-height:1.5; }
+.dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 @media (max-width:460px) { .preset-toolbar { grid-template-columns:1fr; } .preset-save-field, .preset-toolbar > button { grid-column:auto; } .preset-actions { flex-wrap:wrap; } }
 .receiver-openwebrx { border-left:3px solid #68a9e9; }
 .receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
@@ -223,6 +227,16 @@ input[type=range] { padding:0; accent-color:#4294dd; }
       </section>
     </div>
   </div>
+
+  <dialog id="preset-overwrite-dialog" class="confirm-dialog" aria-labelledby="preset-overwrite-message">
+    <form method="dialog">
+      <p id="preset-overwrite-message">Are you sure you want to override this preset?</p>
+      <div class="dialog-actions">
+        <button type="submit" value="no">No</button>
+        <button type="submit" value="yes" class="primary">Yes</button>
+      </div>
+    </form>
+  </dialog>
 
   <section class="advanced-section" aria-label="Advanced application tools">
     <button id="advanced-tab" class="advanced-tab" type="button" aria-expanded="false" aria-controls="advanced-panel">Advanced</button>
@@ -622,6 +636,14 @@ function renderReceivers(receivers, openwebrx) {
     openList.append(card);
   }
 }
+function confirmPresetOverride() {
+  const dialog=$("preset-overwrite-dialog");
+  dialog.returnValue="";
+  return new Promise(resolve=>{
+    dialog.addEventListener("close",()=>resolve(dialog.returnValue==="yes"),{once:true});
+    dialog.showModal();
+  });
+}
 async function renderRadioPresets(presets) {
   const select=$("radio-preset-select");
   const selectedId=select.value;
@@ -667,7 +689,7 @@ async function saveRadioPreset() {
   try {
     const existingData=await api("/api/presets");
     const existing=(existingData.presets || []).find(item=>item.name.toLowerCase()===name.toLowerCase());
-    if(existing && !window.confirm("Are you sure you want to override this preset?")) {
+    if(existing && !await confirmPresetOverride()) {
       $("radio-preset-status").textContent="Preset was not changed.";
       $("radio-preset-status").className="status";
       return;
@@ -807,7 +829,7 @@ async function importRadioPresets(file) {
       .filter(Boolean);
     const current=await api("/api/presets");
     const namesToOverride=(current.presets || []).filter(preset=>importedNames.includes(preset.name.toLowerCase()));
-    if(namesToOverride.length && !window.confirm("Are you sure you want to override this preset?")) {
+    if(namesToOverride.length && !await confirmPresetOverride()) {
       $("radio-preset-status").textContent="Preset import cancelled.";
       $("radio-preset-status").className="status";
       return;
