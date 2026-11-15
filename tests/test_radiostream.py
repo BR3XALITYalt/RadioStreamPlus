@@ -620,7 +620,7 @@ class RadioStreamTests(unittest.TestCase):
             xml_data = rs.export_radio_presets_xml()
             root = ET.fromstring(xml_data)
             self.assertEqual(root.tag, "radio-stream-presets")
-            self.assertEqual(root.get("version"), "1")
+            self.assertEqual(root.get("version"), "2")
             self.assertEqual(
                 [float(node.text) for node in root.findall("./preset/frequencies-khz/frequency")],
                 [2500, 5000, 10000],
@@ -650,9 +650,35 @@ class RadioStreamTests(unittest.TestCase):
             legacy_result = rs.import_radio_presets_xml(legacy_xml)
             self.assertEqual(legacy_result["added"], 1)
             self.assertEqual(legacy_result["presets"][-1]["frequencies_khz"], [4625])
+            self.assertEqual(
+                legacy_result["presets"][-1]["center_lat"],
+                rs.DEFAULT_CONFIG["center_lat"],
+            )
+            self.assertEqual(
+                legacy_result["presets"][-1]["center_lon"],
+                rs.DEFAULT_CONFIG["center_lon"],
+            )
+            self.assertEqual(
+                legacy_result["presets"][-1]["radius_km"],
+                rs.DEFAULT_CONFIG["radius_km"],
+            )
 
             with self.assertRaises(ValueError):
                 rs.import_radio_presets_xml('<radio-stream-presets version="99"/>')
+
+            missing_v2_map_fields = """<radio-stream-presets version="2">
+              <preset>
+                <name>Invalid v2 preset</name>
+                <frequency-khz>4625</frequency-khz>
+                <frequencies-khz><frequency>4625</frequency></frequencies-khz>
+                <mode>am</mode>
+                <passband-low>-4900</passband-low>
+                <passband-high>4900</passband-high>
+                <rotation-minutes>14</rotation-minutes>
+              </preset>
+            </radio-stream-presets>"""
+            with self.assertRaisesRegex(ValueError, "missing required map fields"):
+                rs.import_radio_presets_xml(missing_v2_map_fields)
 
     def test_full_backup_xml_round_trip_restores_all_user_data(self):
         previous = {
@@ -717,7 +743,7 @@ class RadioStreamTests(unittest.TestCase):
             xml_backup = rs.export_all_data_xml()
             xml_root = ET.fromstring(xml_backup)
             self.assertEqual(xml_root.tag, "radiostream-plus-backup")
-            self.assertEqual(xml_root.get("version"), "1")
+            self.assertEqual(xml_root.get("version"), "2")
             self.assertIsNotNone(xml_root.find("configuration"))
             self.assertIsNotNone(xml_root.find("presets"))
             self.assertIsNotNone(xml_root.find("custom_openwebrx"))
@@ -760,6 +786,32 @@ class RadioStreamTests(unittest.TestCase):
             self.assertEqual(saved_presets["schema"], 2)
             self.assertEqual(saved_receivers["schema"], 1)
             self.assertEqual(saved_preferences["stations"]["kiwi:blocked"], "block")
+
+            # Version 1 backups remain importable when their presets lack map fields.
+            legacy_root = ET.fromstring(xml_backup)
+            legacy_root.set("version", "1")
+            for preset_node in legacy_root.findall("./presets/item"):
+                if preset_node.get("type") == "dict":
+                    for entry in list(preset_node):
+                        if entry.get("key") in {"center_lat", "center_lon", "radius_km"}:
+                            preset_node.remove(entry)
+            legacy_result = rs.import_all_data_xml(
+                ET.tostring(legacy_root, encoding="unicode")
+            )
+            self.assertEqual(legacy_result["presets"], 1)
+            restored_legacy_preset = rs.get_radio_presets()[0]
+            self.assertEqual(
+                restored_legacy_preset["center_lat"],
+                rs.DEFAULT_CONFIG["center_lat"],
+            )
+            self.assertEqual(
+                restored_legacy_preset["center_lon"],
+                rs.DEFAULT_CONFIG["center_lon"],
+            )
+            self.assertEqual(
+                restored_legacy_preset["radius_km"],
+                rs.DEFAULT_CONFIG["radius_km"],
+            )
 
     def test_full_backup_rejects_unsupported_version_without_changing_data(self):
         previous_config = rs.config
