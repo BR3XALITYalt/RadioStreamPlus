@@ -367,7 +367,7 @@ function renderReceivers(receivers, openwebrx) {
   if(!openwebrx.length) {
     const empty=document.createElement("p");
     empty.className="hint";
-    empty.textContent="No OpenWebRX receivers in this area support the selected frequency.";
+    empty.textContent="No OpenWebRX receivers with a matching range were found.";
     openList.append(empty);
   }
   for(const item of openwebrx) {
