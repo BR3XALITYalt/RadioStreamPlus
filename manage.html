@@ -372,7 +372,7 @@ function renderReceivers(receivers, openwebrx) {
   }
   for(const item of openwebrx) {
     const marker=L.circleMarker([item.lat,item.lon],{radius:7,color:"#8ec5ff",weight:1.5,fillColor:"#397eb8",fillOpacity:.9}).addTo(map);
-    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><a href="${safeText(item.tune_url)}" target="_blank" rel="noopener">Open tuned receiver</a><br><small>Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a></small>`);
+    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><a href="${safeText(item.tune_url)}" target="_blank" rel="noopener">Open at selected frequency</a><br><small>Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a></small>`);
     receiverMarkers.push(marker);
     const card=document.createElement("div");
     card.className="receiver receiver-openwebrx";
@@ -391,7 +391,7 @@ function renderReceivers(receivers, openwebrx) {
     link.href=item.tune_url;
     link.target="_blank";
     link.rel="noopener";
-    link.textContent="Open tuned receiver";
+    link.textContent="Open at selected frequency";
     actions.append(link);
     card.append(info,actions);
     openList.append(card);
