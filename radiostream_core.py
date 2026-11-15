@@ -7,6 +7,7 @@ import html
 import ipaddress
 import json
 import math
+import os
 import re
 import secrets
 import socket
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Any
 
 APP_DIR = Path(__file__).resolve().parent
+DATA_DIR = Path(os.environ.get("RADIOSTREAM_DATA_DIR") or APP_DIR).expanduser().resolve()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 HOST = "127.0.0.1"
 PORT = 5056
 DIRECTORY_URL = "https://cdn.aethersdr.com/kiwi.json"
@@ -36,12 +39,12 @@ HAMQSL_URL = "https://www.hamqsl.com/solarxml.php"
 APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
 
 RADIOSTREAM_IDENT = "rsplus-" + "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(4))
-CONFIG_PATH = APP_DIR / "radiostream.json"
-DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
-STATION_PREFERENCES_PATH = APP_DIR / "station_preferences.json"
-RECEIVERBOOK_CACHE_PATH = APP_DIR / "receiverbook_cache.json"
-OPENWEBRX_CUSTOM_PATH = APP_DIR / "openwebrx_custom.json"
-RADIO_PRESETS_PATH = APP_DIR / "radio_presets.json"
+CONFIG_PATH = DATA_DIR / "radiostream.json"
+DIRECTORY_CACHE_PATH = DATA_DIR / "kiwi_directory_cache.json"
+STATION_PREFERENCES_PATH = DATA_DIR / "station_preferences.json"
+RECEIVERBOOK_CACHE_PATH = DATA_DIR / "receiverbook_cache.json"
+OPENWEBRX_CUSTOM_PATH = DATA_DIR / "openwebrx_custom.json"
+RADIO_PRESETS_PATH = DATA_DIR / "radio_presets.json"
 STATION_PREFERENCES_LOCK = threading.RLock()
 OPENWEBRX_CUSTOM_LOCK = threading.RLock()
 RADIO_PRESETS_LOCK = threading.RLock()
