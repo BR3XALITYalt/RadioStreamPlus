@@ -69,6 +69,8 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .preset-toolbar > button { min-height:36px; white-space:nowrap; }
 .preset-save-field { grid-column:1; }
 #radio-preset-status { min-height:14px; margin-top:5px; }
+.preset-io { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.preset-io button { padding:7px 10px; }
 @media (max-width:460px) { .preset-toolbar { grid-template-columns:1fr; } .preset-save-field, .preset-toolbar > button { grid-column:auto; } .preset-actions { flex-wrap:wrap; } }
 .receiver-openwebrx { border-left:3px solid #68a9e9; }
 .receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
@@ -151,6 +153,11 @@ input[type=range] { padding:0; accent-color:#4294dd; }
         <input id="radio-preset-name" type="text" maxlength="80" placeholder="e.g. WWV 10 MHz">
       </div>
       <button id="save-radio-preset" class="primary" type="button">Save preset</button>
+    </div>
+    <div class="preset-io">
+      <button id="export-radio-presets" type="button">Export XML</button>
+      <button id="import-radio-presets" type="button">Import XML</button>
+      <input id="radio-preset-file" type="file" accept=".xml,application/xml,text/xml" hidden>
     </div>
     <div id="radio-preset-status" class="status" role="status"></div>
   </section>
@@ -605,8 +612,14 @@ async function renderRadioPresets(presets) {
   } else {
     for(const preset of presets) {
       const option=document.createElement("option");
+      const frequencies=Array.isArray(preset.frequencies_khz) && preset.frequencies_khz.length
+        ? preset.frequencies_khz
+        : [preset.frequency_khz];
+      const frequencySummary=frequencies.length===1
+        ? formatFrequency(frequencies[0])
+        : frequencies.length + " frequencies · starts at " + formatFrequency(preset.frequency_khz);
       option.value=preset.id;
-      option.textContent=`${preset.name} · ${preset.frequency_khz} kHz · ${preset.mode.toUpperCase()}`;
+      option.textContent=preset.name + " · " + frequencySummary + " · " + preset.mode.toUpperCase();
       select.append(option);
     }
     if(presets.some(preset=>preset.id===selectedId)) select.value=selectedId;
@@ -634,9 +647,11 @@ async function saveRadioPreset() {
     const data=await api("/api/presets",{
       name,
       frequency_khz:settings.frequency_khz,
+      frequencies_khz:settings.frequencies_khz,
       mode:settings.mode,
       passband_low:settings.passband_low,
-      passband_high:settings.passband_high
+      passband_high:settings.passband_high,
+      rotation_minutes:settings.rotation_minutes
     });
     await renderRadioPresets(data.presets || []);
     const saved=(data.presets || []).find(item=>item.name.toLowerCase()===name.toLowerCase());
@@ -662,12 +677,21 @@ async function applyRadioPreset() {
     const data=await api("/api/presets");
     const preset=(data.presets || []).find(item=>item.id===presetId);
     if(!preset) throw new Error("That preset no longer exists. Refresh the preset list.");
-    renderFrequencies([preset.frequency_khz]);
+    const frequencies=Array.isArray(preset.frequencies_khz) && preset.frequencies_khz.length
+      ? preset.frequencies_khz
+      : [preset.frequency_khz];
+    renderFrequencies(frequencies);
+    currentConfig={
+      ...(currentConfig || {}),
+      frequency_khz:preset.frequency_khz,
+      frequencies_khz:frequencies
+    };
     $("mode").value=preset.mode;
     $("pb-low").value=preset.passband_low;
     $("pb-high").value=preset.passband_high;
+    $("rotation").value=preset.rotation_minutes ?? currentConfig.rotation_minutes;
     await saveSettings(false);
-    $("radio-preset-status").textContent=`Loaded ${preset.name}.`;
+    $("radio-preset-status").textContent="Loaded " + preset.name + ".";
     $("radio-preset-status").className="status good";
     await discover();
   } catch(error) {
@@ -697,9 +721,68 @@ async function deleteRadioPreset() {
     button.disabled=!selected;
   }
 }
+async function exportRadioPresets() {
+  const button=$("export-radio-presets");
+  button.disabled=true;
+  try {
+    const response=await fetch("/api/presets/export");
+    if(!response.ok) {
+      let message="HTTP " + response.status;
+      try {
+        const data=await response.json();
+        if(data.error) message=data.error;
+      } catch {}
+      throw new Error(message);
+    }
+    const blob=await response.blob();
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=url;
+    link.download="radiostream-presets.xml";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $("radio-preset-status").textContent="Presets exported to XML.";
+    $("radio-preset-status").className="status good";
+  } catch(error) {
+    $("radio-preset-status").textContent=error.message;
+    $("radio-preset-status").className="status error";
+  } finally {
+    button.disabled=false;
+  }
+}
+async function importRadioPresets(file) {
+  const button=$("import-radio-presets");
+  button.disabled=true;
+  try {
+    const response=await fetch("/api/presets/import",{
+      method:"POST",
+      headers:{"Content-Type":"application/xml"},
+      body:await file.text()
+    });
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+    await renderRadioPresets(data.presets || []);
+    $("radio-preset-status").textContent="Import complete: " + data.added + " added, " + data.updated + " updated.";
+    $("radio-preset-status").className="status good";
+  } catch(error) {
+    $("radio-preset-status").textContent=error.message;
+    $("radio-preset-status").className="status error";
+  } finally {
+    button.disabled=false;
+    $("radio-preset-file").value="";
+  }
+}
 $("save-radio-preset").addEventListener("click",saveRadioPreset);
 $("load-radio-preset").addEventListener("click",applyRadioPreset);
 $("delete-radio-preset").addEventListener("click",deleteRadioPreset);
+$("export-radio-presets").addEventListener("click",exportRadioPresets);
+$("import-radio-presets").addEventListener("click",()=>$("radio-preset-file").click());
+$("radio-preset-file").addEventListener("change",event=>{
+  const file=event.target.files?.[0];
+  if(file) importRadioPresets(file);
+});
 $("radio-preset-select").addEventListener("change",()=>{
   const selected=Boolean($("radio-preset-select").value);
   $("load-radio-preset").disabled=!selected;
