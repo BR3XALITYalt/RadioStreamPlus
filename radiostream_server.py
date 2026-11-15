@@ -23,6 +23,7 @@ APP_DIR = core.APP_DIR
 HOST = core.HOST
 PORT = core.PORT
 STATE_LOCK = threading.RLock()
+STATE_REFRESH_LOCK = threading.RLock()
 current_receiver: dict[str, Any] | None = None
 current_started_at = 0.0
 last_receiver_ids: list[str] = []
@@ -320,6 +321,11 @@ def pick_next_receiver(force_next: bool = False) -> dict[str, Any] | None:
 
 
 def get_state() -> dict[str, Any]:
+    with STATE_REFRESH_LOCK:
+        return _get_state()
+
+
+def _get_state() -> dict[str, Any]:
     global current_receiver, current_started_at, last_receiver_error
     with core.CONFIG_LOCK:
         cfg = dict(core.config)
