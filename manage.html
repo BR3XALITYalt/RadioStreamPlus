@@ -150,6 +150,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
           <div class="directory-section">
             <h3>OpenWebRX sources</h3>
             <label class="source-toggle" for="receiverbook-enabled"><input id="receiverbook-enabled" type="checkbox" checked> Include public Receiverbook listings</label>
+            <label class="source-toggle" for="custom-enabled"><input id="custom-enabled" type="checkbox" checked> Include your custom instances</label>
             <p class="hint">Turn this off to use only the instances you add below.</p>
             <h3>Your OpenWebRX instances</h3>
             <div id="custom-openwebrx-list"><p class="hint">No custom instances added.</p></div>
@@ -277,7 +278,8 @@ function readSettings() {
     passband_high:Number($("pb-high").value),
     overlay_reload_notice:$("overlay-reload-notice").value,
     overlay_black_notice:$("overlay-black-notice").value,
-    openwebrx_receiverbook_enabled:$("receiverbook-enabled").checked
+    openwebrx_receiverbook_enabled:$("receiverbook-enabled").checked,
+    openwebrx_custom_enabled:$("custom-enabled").checked
   };
 }
 function fillSettings(cfg) {
@@ -298,6 +300,7 @@ function fillSettings(cfg) {
   $("overlay-reload-notice").value=cfg.overlay_reload_notice ?? "";
   $("overlay-black-notice").value=cfg.overlay_black_notice ?? "";
   $("receiverbook-enabled").checked=cfg.openwebrx_receiverbook_enabled !== false;
+  $("custom-enabled").checked=cfg.openwebrx_custom_enabled !== false;
   updateArea();
 }
 async function saveSettings(showMessage=true) {
@@ -509,6 +512,19 @@ $("receiverbook-enabled").addEventListener("change",async()=>{
     $("custom-openwebrx-status").textContent=$("receiverbook-enabled").checked
       ? "Receiverbook listings enabled."
       : "Receiverbook listings disabled. Only your custom instances will be searched.";
+    $("custom-openwebrx-status").className="status good";
+    await discover();
+  } catch(error) {
+    $("custom-openwebrx-status").textContent=error.message;
+    $("custom-openwebrx-status").className="status error";
+  }
+});
+$("custom-enabled").addEventListener("change",async()=>{
+  try {
+    await saveSettings(false);
+    $("custom-openwebrx-status").textContent=$("custom-enabled").checked
+      ? "Your custom instances are included in discovery."
+      : "Your custom instances are saved but excluded from discovery.";
     $("custom-openwebrx-status").className="status good";
     await discover();
   } catch(error) {
