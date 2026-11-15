@@ -505,7 +505,8 @@ async function selectReceiver(id) {
 function showCurrent(state) {
   const current=state?.current;
   const panel=$("current");
-  const config=state?.config || currentConfig || {};
+  if(state?.config) currentConfig=state.config;
+  const config=currentConfig || {};
   const frequency=config.frequency_khz;
   const frequencyCount=(config.frequencies_khz || [frequency]).length;
   $("frequency-current").textContent=Number.isFinite(Number(frequency))
