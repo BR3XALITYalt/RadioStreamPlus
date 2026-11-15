@@ -1,14 +1,16 @@
 # RadioStream+ Wiki
 
-Find instructions for installing and using RadioStream+, along with reference material for its settings, receiver sources, and local services.
+RadioStream+ is built to make continuous radio-monitoring livestreams easier to set up and keep running. It finds public KiwiSDR receivers for a selected signal, tunes the player, and can rotate between eligible receivers automatically. Add the local SDR player and information overlay to OBS, then use OBS to broadcast the scene to YouTube or another platform.
 
-RadioStream+ is a local radio receiver manager and OBS information overlay. Use it to find public KiwiSDR and OpenWebRX receivers, tune to a frequency, save radio presets, and display receiver and propagation information in OBS.
+It is designed for streams such as long-running UVB-76 monitoring broadcasts. RadioStream+ manages the receiver feed and on-screen information; OBS handles the actual livestream output.
+
+This wiki covers setup, receiver discovery and rotation, OBS configuration, application settings, and reference material.
 
 ## Start here
 
 | Page | Description |
 |---|---|
-| [Getting Started](getting-started.md) | Requirements, launch instructions, and the first run |
+| [Getting Started](getting-started.md) | Set up a radio-monitoring feed and connect it to OBS |
 | [Management Page](management.md) | Map, settings, discovery, and receiver controls |
 | [Radio Presets](radio-presets.md) | Save and switch between named frequencies and modes |
 
@@ -17,9 +19,9 @@ RadioStream+ is a local radio receiver manager and OBS information overlay. Use 
 | Page | Description |
 |---|---|
 | [Receiver Discovery](receiver-discovery.md) | Search radius, frequency filtering, directory sources, and map markers |
-| [KiwiSDR](kiwisdr.md) | Selecting receivers, playback, and automatic rotation |
+| [KiwiSDR](kiwisdr.md) | The main livestream feed, receiver selection, playback, and automatic rotation |
 | [OpenWebRX](openwebrx.md) | Receiverbook listings, custom instances, and tuning links |
-| [OBS Overlay](obs-overlay.md) | Add the transparent information panel to an OBS scene |
+| [OBS Setup](obs-overlay.md) | Add the SDR player and information overlay to an OBS scene |
 
 ## Reference
 
