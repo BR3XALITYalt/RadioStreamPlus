@@ -23,9 +23,11 @@ Custom records are saved locally in `openwebrx_custom.json`. Removing an entry d
 
 ## Frequency filtering
 
-RadioStream+ reads frequency coverage from the OpenWebRX+ `status.json` response or the classic OpenWebRX `/status` response. Only receivers with an advertised range containing the selected frequency appear in the result list.
+RadioStream+ reads frequency coverage from the OpenWebRX+ `status.json` response or the classic OpenWebRX `/status` response. For OpenWebRX+, each profile's center frequency and sample rate define its advertised range. Only receivers with at least one profile containing the selected frequency appear in the result list.
 
-A receiver can still reject the tuning link. OpenWebRX+ may only accept tuning within its currently active profile, while discovery can see the ranges of multiple advertised profiles. The link does not force a profile switch.
+When an OpenWebRX+ profile matches, the **Open at selected frequency** link briefly connects to the receiver's WebSocket, matches the advertised profile name to its profile ID, selects that profile, and then opens the receiver at the requested frequency. If the profile cannot be selected, the launcher offers a direct link without switching.
+
+Changing an OpenWebRX+ profile changes the active range for everyone using that SDR device. The launcher displays this before making the change. Classic OpenWebRX only exposes an aggregate `bands` range and is opened directly without profile selection.
 
 ## URL behavior
 
