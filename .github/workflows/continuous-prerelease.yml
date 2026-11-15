@@ -77,6 +77,8 @@ jobs:
               --verify-tag
           fi
 
+          gh release delete-asset continuous RadioStreamPlus.exe --repo "$REPOSITORY" --yes 2>/dev/null || true
+
           gh release upload continuous \
             RadioStreamPlus-prerelease.zip \
             --repo "$REPOSITORY" \
