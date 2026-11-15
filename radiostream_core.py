@@ -642,8 +642,19 @@ def get_custom_openwebrx_instances() -> list[dict[str, Any]]:
         return [dict(item) for item in openwebrx_custom_data]
 
 
-def save_custom_openwebrx_frequency_cache() -> None:
+def save_custom_openwebrx_frequency_cache(checked_instances: list[dict[str, Any]] | None = None) -> None:
     with OPENWEBRX_CUSTOM_LOCK:
+        if checked_instances:
+            checked_by_url = {
+                item.get("url"): item
+                for item in checked_instances
+                if isinstance(item, dict) and item.get("url")
+            }
+            for stored in openwebrx_custom_data:
+                checked = checked_by_url.get(stored.get("url"))
+                if checked and "frequency_checked_at" in checked:
+                    stored["frequency_ranges"] = checked.get("frequency_ranges", [])
+                    stored["frequency_checked_at"] = checked["frequency_checked_at"]
         try:
             _write_custom_openwebrx(openwebrx_custom_data)
         except RuntimeError as exc:
@@ -1004,7 +1015,7 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
     if any(source == "Receiverbook" for _item, _distance, source in candidates):
         save_receiverbook_cache()
     if any(source == "Custom" for _item, _distance, source in candidates):
-        save_custom_openwebrx_frequency_cache()
+        save_custom_openwebrx_frequency_cache([item for item, _distance, source in candidates if source == "Custom"])
 
     found.sort(key=lambda item: (item["distance_km"], item["name"].casefold()))
     meta = {
