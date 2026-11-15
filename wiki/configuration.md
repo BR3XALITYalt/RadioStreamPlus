@@ -58,9 +58,7 @@ These files are created beside the application when needed:
 | `radio_presets.json` | User-created frequency, mode, and passband presets |
 | `solar_xml_cache.xml` | Cached propagation feed |
 
-The updater also stores its last processed application revision in `.radiostream-update.json`.
-
-These data files are local state, not application source. They are not overwritten by the normal application updater. The repository's `.gitignore` excludes them to reduce the chance of committing personal settings or receiver lists.
+Settings, preferences, presets, custom receiver entries, and directory caches are stored locally. The automatic updater leaves these files intact.
 
 ## Example configuration
 
