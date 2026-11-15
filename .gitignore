@@ -17,3 +17,7 @@ openwebrx_custom.json
 openwebrx_custom.json.tmp
 radio_presets.json
 radio_presets.json.tmp
+
+build/
+dist/
+*.spec
