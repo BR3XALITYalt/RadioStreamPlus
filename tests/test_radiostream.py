@@ -526,6 +526,9 @@ class RadioStreamTests(unittest.TestCase):
         self.assertEqual(preset["name"], "WWV multi-band")
         self.assertEqual(preset["frequency_khz"], 10000)
         self.assertEqual(preset["frequencies_khz"], [2500, 5000, 10000])
+        self.assertEqual(preset["center_lat"], rs.DEFAULT_CONFIG["center_lat"])
+        self.assertEqual(preset["center_lon"], rs.DEFAULT_CONFIG["center_lon"])
+        self.assertEqual(preset["radius_km"], rs.DEFAULT_CONFIG["radius_km"])
         self.assertEqual(preset["rotation_minutes"], 12)
         self.assertEqual(preset["mode"], "am")
         self.assertTrue(preset["id"].startswith("preset-"))
@@ -606,6 +609,9 @@ class RadioStreamTests(unittest.TestCase):
                 "name": "WWV",
                 "frequency_khz": 10000,
                 "frequencies_khz": [2500, 5000, 10000],
+                "center_lat": 35.25,
+                "center_lon": -117.5,
+                "radius_km": 1800,
                 "mode": "usb",
                 "passband_low": 300,
                 "passband_high": 2700,
@@ -627,6 +633,9 @@ class RadioStreamTests(unittest.TestCase):
             imported = result["presets"][0]
             self.assertEqual(imported["frequency_khz"], 10000)
             self.assertEqual(imported["frequencies_khz"], [2500, 5000, 10000])
+            self.assertEqual(imported["center_lat"], 35.25)
+            self.assertEqual(imported["center_lon"], -117.5)
+            self.assertEqual(imported["radius_km"], 1800)
             self.assertEqual(imported["rotation_minutes"], 9)
 
             legacy_xml = """<radio-stream-presets version="1">
@@ -644,6 +653,127 @@ class RadioStreamTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 rs.import_radio_presets_xml('<radio-stream-presets version="99"/>')
+
+    def test_full_backup_xml_round_trip_restores_all_user_data(self):
+        previous = {
+            "CONFIG_PATH": rs.CONFIG_PATH,
+            "RADIO_PRESETS_PATH": rs.RADIO_PRESETS_PATH,
+            "OPENWEBRX_CUSTOM_PATH": rs.OPENWEBRX_CUSTOM_PATH,
+            "STATION_PREFERENCES_PATH": rs.STATION_PREFERENCES_PATH,
+            "config": rs.config,
+            "radio_presets": rs.radio_presets,
+            "openwebrx_custom_data": rs.openwebrx_custom_data,
+            "station_preferences": rs.station_preferences,
+        }
+        def restore_previous():
+            for key, value in previous.items():
+                setattr(rs, key, value)
+        self.addCleanup(restore_previous)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rs.CONFIG_PATH = root / "radiostream.json"
+            rs.RADIO_PRESETS_PATH = root / "radio_presets.json"
+            rs.OPENWEBRX_CUSTOM_PATH = root / "openwebrx_custom.json"
+            rs.STATION_PREFERENCES_PATH = root / "station_preferences.json"
+
+            rs.config = dict(rs.DEFAULT_CONFIG)
+            rs.config.update({
+                "center_lat": 42.5,
+                "center_lon": -73.25,
+                "radius_km": 1250,
+                "frequency_khz": 10000,
+                "frequencies_khz": [2500, 5000, 10000],
+                "overlay_reload_notice": "Reload message\nSecond line",
+                "overlay_black_notice": "Black screen message",
+                "openwebrx_custom_enabled": False,
+            })
+            rs.radio_presets = [rs.normalize_radio_preset({
+                "id": "preset-backup",
+                "name": "Backup preset",
+                "frequency_khz": 10000,
+                "frequencies_khz": [2500, 5000, 10000],
+                "center_lat": 42.5,
+                "center_lon": -73.25,
+                "radius_km": 1250,
+                "mode": "usb",
+                "passband_low": 300,
+                "passband_high": 2700,
+                "rotation_minutes": 11,
+            })]
+            rs.openwebrx_custom_data = [rs.normalize_custom_openwebrx_instance({
+                "url": "https://backup-sdr.example.test/",
+                "name": "Backup receiver",
+                "lat": 43.0,
+                "lon": -74.0,
+                "frequency_ranges": [{"low_hz": 4000000, "high_hz": 12000000}],
+                "frequency_checked_at": 123456.0,
+            })]
+            rs.station_preferences = {
+                "kiwi:liked": "like",
+                "kiwi:blocked": "block",
+            }
+
+            xml_backup = rs.export_all_data_xml()
+            xml_root = ET.fromstring(xml_backup)
+            self.assertEqual(xml_root.tag, "radiostream-plus-backup")
+            self.assertEqual(xml_root.get("version"), "1")
+            self.assertIsNotNone(xml_root.find("configuration"))
+            self.assertIsNotNone(xml_root.find("presets"))
+            self.assertIsNotNone(xml_root.find("custom_openwebrx"))
+            self.assertIsNotNone(xml_root.find("station_preferences"))
+
+            rs.config = dict(rs.DEFAULT_CONFIG)
+            rs.radio_presets = []
+            rs.openwebrx_custom_data = []
+            rs.station_preferences = {}
+
+            result = rs.import_all_data_xml(xml_backup.decode("utf-8"))
+            self.assertEqual(result, {
+                "presets": 1,
+                "custom_receivers": 1,
+                "station_preferences": 2,
+            })
+            self.assertEqual(rs.config["center_lat"], 42.5)
+            self.assertEqual(rs.config["center_lon"], -73.25)
+            self.assertEqual(rs.config["radius_km"], 1250)
+            self.assertEqual(rs.config["frequencies_khz"], [2500, 5000, 10000])
+            self.assertEqual(rs.config["overlay_reload_notice"], "Reload message\nSecond line")
+            self.assertEqual(rs.config["overlay_black_notice"], "Black screen message")
+            self.assertFalse(rs.config["openwebrx_custom_enabled"])
+            self.assertEqual(rs.get_radio_presets()[0]["center_lat"], 42.5)
+            self.assertEqual(rs.get_radio_presets()[0]["radius_km"], 1250)
+            restored_receiver = rs.get_custom_openwebrx_instances()[0]
+            self.assertEqual(restored_receiver["name"], "Backup receiver")
+            self.assertEqual(
+                restored_receiver["frequency_ranges"],
+                [{"low_hz": 4000000.0, "high_hz": 12000000.0}],
+            )
+            self.assertEqual(rs.get_station_preference("kiwi:liked"), "like")
+            self.assertEqual(rs.get_station_preference("kiwi:blocked"), "block")
+
+            saved_config = json.loads(rs.CONFIG_PATH.read_text(encoding="utf-8"))
+            saved_presets = json.loads(rs.RADIO_PRESETS_PATH.read_text(encoding="utf-8"))
+            saved_receivers = json.loads(rs.OPENWEBRX_CUSTOM_PATH.read_text(encoding="utf-8"))
+            saved_preferences = json.loads(rs.STATION_PREFERENCES_PATH.read_text(encoding="utf-8"))
+            self.assertEqual(saved_config["radius_km"], 1250)
+            self.assertEqual(saved_presets["schema"], 2)
+            self.assertEqual(saved_receivers["schema"], 1)
+            self.assertEqual(saved_preferences["stations"]["kiwi:blocked"], "block")
+
+    def test_full_backup_rejects_unsupported_version_without_changing_data(self):
+        previous_config = rs.config
+        previous_presets = rs.radio_presets
+        self.addCleanup(lambda: (
+            setattr(rs, "config", previous_config),
+            setattr(rs, "radio_presets", previous_presets),
+        ))
+        rs.config = dict(rs.DEFAULT_CONFIG)
+        rs.radio_presets = []
+        with self.assertRaises(ValueError):
+            rs.import_all_data_xml('<radiostream-plus-backup version="99"/>')
+        self.assertEqual(rs.config["frequency_khz"], rs.DEFAULT_CONFIG["frequency_khz"])
+        self.assertEqual(rs.radio_presets, [])
 
     def test_radio_presets_persist_update_and_delete(self):
         previous_path = rs.RADIO_PRESETS_PATH
