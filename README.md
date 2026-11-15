@@ -32,7 +32,7 @@ Open the management page at **http://localhost:5056/**.
 
 ## Windows executable
 
-An experimental Windows x64 launcher is available in the [continuous pre-release](https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus.exe). It includes its own Python runtime, downloads the current source from GitHub, and runs that source locally. After a successful online launch, it keeps a source cache and can start from that cache when GitHub is unavailable. The first launch needs an internet connection unless a source cache is already present.
+An experimental Windows x64 launcher is available in the [continuous pre-release](https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus.exe), or as the [latest Windows executable package](https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease.yml/main/windows-executable.zip) through nightly.link. The package contains the executable. It includes its own Python runtime, downloads the current source from GitHub, and runs that source locally. After a successful online launch, it keeps a source cache and can start from that cache when GitHub is unavailable. The first launch needs an internet connection unless a source cache is already present.
 
 The executable stores settings, presets, preferences, and other application data in `%LOCALAPPDATA%\RadioStreamPlus\data`, separately from the downloaded application files. This executable is experimental; the Python launcher remains available above.
 
