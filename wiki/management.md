@@ -2,7 +2,7 @@
 
 **Navigation:** [Wiki home](main.md) · [Getting Started](getting-started.md) · [Receiver Discovery](receiver-discovery.md) · [Radio Presets](radio-presets.md)
 
-The management page is available at `http://localhost:5056/`. It contains the receiver map, radio settings, discovery results, OpenWebRX source controls, and saved presets.
+The management page is the control panel for the RadioStream+ receiver feed. It is available at `http://localhost:5056/` and is where you choose the monitoring frequency, find suitable KiwiSDRs, select the current receiver, configure automatic rotation, and manage the settings used by the OBS player and overlay.
 
 ## Map and search area
 
