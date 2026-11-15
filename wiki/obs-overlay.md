@@ -2,9 +2,9 @@
 
 **Navigation:** [Wiki home](main.md) · [Getting Started](getting-started.md) · [Configuration](configuration.md)
 
-RadioStream+ includes a transparent 1920 × 1080 information overlay designed for use as an OBS Browser Source.
+RadioStream+ provides the two browser sources used to build its OBS livestream scene: the SDR player, which supplies the selected KiwiSDR's picture and audio, and a transparent 1920 × 1080 information overlay with clocks and HF propagation details. Add both to OBS, arrange them into a scene, then let OBS handle encoding and broadcasting to YouTube or another platform. RadioStream+ does not directly publish a livestream.
 
-## Add the overlay
+## Add the information overlay
 
 1. Start RadioStream+.
 2. In OBS, add a **Browser Source**.
@@ -29,10 +29,14 @@ The management page includes two editable overlay messages:
 
 The reload message supports the `${M}` placeholder, which is replaced by the configured receiver rotation interval in minutes. Both messages support line breaks and up to eight lines.
 
-## Add the SDR player separately
+## Add the SDR player
 
-When the KiwiSDR picture and sound should appear in the OBS scene, add a second Browser Source:
+Add another Browser Source for the actual receiver feed:
 
 - URL: `http://localhost:5056/sdr`
 
-Enable browser-source audio capture in OBS when receiver audio is needed. The player automatically follows the selected KiwiSDR receiver and its rotations.
+Enable browser-source audio capture in OBS so the receiver audio is included in the broadcast. The player automatically follows the selected KiwiSDR receiver and its rotations. Place this source below or above the information overlay as needed for your scene.
+
+## Go live
+
+Once both sources are arranged, configure your normal OBS streaming output and start the broadcast from OBS. Keep RadioStream+ running for as long as the Browser Sources need to load and update. OBS, not RadioStream+, handles the connection to YouTube or your chosen streaming service.
