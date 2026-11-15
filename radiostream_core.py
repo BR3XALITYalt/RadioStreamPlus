@@ -37,6 +37,8 @@ OPENWEBRX_STATUS_TIMEOUT = 2.5
 OPENWEBRX_STATUS_MAX_BYTES = 512 * 1024
 OPENWEBRX_BAND_CACHE_MAX_AGE = 30 * 60
 OPENWEBRX_BAND_PROBE_WORKERS = 16
+OPENWEBRX_PROFILE_CACHE_LOCK = threading.RLock()
+OPENWEBRX_PROFILE_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 HAMQSL_URL = "https://www.hamqsl.com/solarxml.php"
 APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
 
@@ -1499,28 +1501,93 @@ def _append_frequency_range(
         ranges.append({"low_hz": low, "high_hz": high})
 
 
-def parse_openwebrx_plus_frequency_ranges(payload: Any) -> list[dict[str, float]]:
-    """Read profile frequency coverage from an OpenWebRX+ status.json response."""
+def parse_openwebrx_plus_profiles(payload: Any) -> list[dict[str, Any]]:
+    """Read profile names and tuning ranges from an OpenWebRX+ status.json response."""
     if not isinstance(payload, dict) or not isinstance(payload.get("sdrs"), list):
         return []
-    ranges: list[dict[str, float]] = []
+    profiles: list[dict[str, Any]] = []
     for sdr in payload["sdrs"]:
         if not isinstance(sdr, dict) or not isinstance(sdr.get("profiles"), list):
             continue
+        sdr_name = str(sdr.get("name") or "").strip()
         for profile in sdr["profiles"]:
             if not isinstance(profile, dict):
                 continue
-            center = profile.get("center_freq")
-            sample_rate = profile.get("sample_rate", profile.get("samp_rate"))
             try:
-                center_hz = float(center)
-                width_hz = float(sample_rate)
+                center_hz = float(profile.get("center_freq"))
+                sample_rate_hz = float(profile.get("sample_rate", profile.get("samp_rate")))
             except (TypeError, ValueError):
                 continue
-            if not math.isfinite(center_hz) or not math.isfinite(width_hz) or width_hz <= 0:
+            if (
+                not math.isfinite(center_hz)
+                or not math.isfinite(sample_rate_hz)
+                or sample_rate_hz <= 0
+            ):
                 continue
-            _append_frequency_range(ranges, center_hz - width_hz / 2, center_hz + width_hz / 2)
-    return ranges
+            low_hz = center_hz - sample_rate_hz / 2
+            high_hz = center_hz + sample_rate_hz / 2
+            if not math.isfinite(low_hz) or not math.isfinite(high_hz) or low_hz < 0:
+                continue
+            profile_name = str(profile.get("name") or "").strip()
+            profile_label = " ".join(part for part in (sdr_name, profile_name) if part)
+            profiles.append({
+                "sdr_name": sdr_name,
+                "profile_name": profile_name,
+                "profile_label": profile_label,
+                "center_hz": center_hz,
+                "sample_rate_hz": sample_rate_hz,
+                "low_hz": low_hz,
+                "high_hz": high_hz,
+            })
+    return profiles
+
+
+def parse_openwebrx_plus_frequency_ranges(payload: Any) -> list[dict[str, float]]:
+    """Read frequency coverage from OpenWebRX+ profiles in Hz."""
+    return [
+        {"low_hz": profile["low_hz"], "high_hz": profile["high_hz"]}
+        for profile in parse_openwebrx_plus_profiles(payload)
+    ]
+
+
+def _remember_openwebrx_profiles(
+    receiver_url: str,
+    profiles: list[dict[str, Any]],
+) -> None:
+    with OPENWEBRX_PROFILE_CACHE_LOCK:
+        OPENWEBRX_PROFILE_CACHE[receiver_url] = (
+            time.monotonic(),
+            [dict(profile) for profile in profiles],
+        )
+
+
+def fetch_openwebrx_profiles(receiver: dict[str, Any]) -> list[dict[str, Any]]:
+    """Fetch profile labels for the browser launcher without persisting profile IDs."""
+    base_url = normalize_receiverbook_url(receiver.get("url"))
+    if not base_url:
+        return []
+    now = time.monotonic()
+    with OPENWEBRX_PROFILE_CACHE_LOCK:
+        cached = OPENWEBRX_PROFILE_CACHE.get(base_url)
+        if cached and now - cached[0] < OPENWEBRX_BAND_CACHE_MAX_AGE:
+            return [dict(profile) for profile in cached[1]]
+
+    profiles: list[dict[str, Any]] = []
+    try:
+        body = _fetch_openwebrx_status(base_url, "status.json", "application/json")
+        if body:
+            profiles = parse_openwebrx_plus_profiles(json.loads(body.decode("utf-8")))
+    except (
+        OSError,
+        urllib.error.URLError,
+        TimeoutError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ):
+        profiles = []
+    _remember_openwebrx_profiles(base_url, profiles)
+    return [dict(profile) for profile in profiles]
 
 
 def parse_openwebrx_classic_frequency_ranges(status_text: str) -> list[dict[str, float]]:
@@ -1580,7 +1647,13 @@ def fetch_openwebrx_frequency_ranges(receiver: dict[str, Any]) -> list[dict[str,
         try:
             body = _fetch_openwebrx_status(base_url, "status.json", "application/json")
             if body:
-                ranges = parse_openwebrx_plus_frequency_ranges(json.loads(body.decode("utf-8")))
+                payload = json.loads(body.decode("utf-8"))
+                profiles = parse_openwebrx_plus_profiles(payload)
+                _remember_openwebrx_profiles(base_url, profiles)
+                ranges = [
+                    {"low_hz": profile["low_hz"], "high_hz": profile["high_hz"]}
+                    for profile in profiles
+                ]
         except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
             ranges = []
 
@@ -1608,6 +1681,33 @@ def make_openwebrx_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
     return urllib.parse.urlunsplit(
         (parsed.scheme, parsed.netloc, parsed.path, parsed.query, fragment)
     )
+
+
+def make_openwebrx_launcher_url(
+    receiver: dict[str, Any],
+    cfg: dict[str, Any],
+    matching_profiles: list[dict[str, Any]],
+) -> str:
+    """Build a local launch URL that selects a matching OpenWebRX+ profile first."""
+    base_url = normalize_receiverbook_url(receiver.get("url"))
+    if not base_url:
+        raise ValueError("OpenWebRX receiver URL is invalid")
+    frequency_hz = round(float(cfg["frequency_khz"]) * 1000)
+    mode = {"nbfm": "nfm"}.get(str(cfg["mode"]).lower(), str(cfg["mode"]).lower())
+    profile_labels = [
+        str(profile.get("profile_label") or "").strip()
+        for profile in matching_profiles
+        if str(profile.get("profile_label") or "").strip()
+    ]
+    if not profile_labels:
+        return make_openwebrx_url(receiver, cfg)
+    query = urllib.parse.urlencode({
+        "url": base_url,
+        "frequency_hz": str(frequency_hz),
+        "mode": mode,
+        "profiles": json.dumps(profile_labels, ensure_ascii=False),
+    })
+    return "/openwebrx-launch.html?" + query
 
 
 def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -1657,22 +1757,57 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
                     print(f"[openwebrx] Could not read receiver frequency range: {exc}", file=sys.stderr)
 
     frequency_hz = round(float(cfg["frequency_khz"]) * 1000)
-    found: list[dict[str, Any]] = []
+    supported_candidates: list[tuple[dict[str, Any], float, str]] = []
     for item, distance, source in candidates:
         ranges = item.get("frequency_ranges") or []
-        frequency_supported = any(
+        if any(
             band["low_hz"] <= frequency_hz <= band["high_hz"]
             for band in ranges
+        ):
+            supported_candidates.append((item, distance, source))
+
+    profile_data: dict[str, list[dict[str, Any]]] = {}
+    if supported_candidates:
+        with ThreadPoolExecutor(max_workers=OPENWEBRX_BAND_PROBE_WORKERS) as executor:
+            future_items = {
+                executor.submit(fetch_openwebrx_profiles, item): item
+                for item, _distance, _source in supported_candidates
+            }
+            for future in as_completed(future_items):
+                item = future_items[future]
+                try:
+                    profile_data[item["url"]] = future.result()
+                except Exception as exc:
+                    print(f"[openwebrx] Could not read OpenWebRX profiles: {exc}", file=sys.stderr)
+                    profile_data[item["url"]] = []
+
+    found: list[dict[str, Any]] = []
+    for item, distance, source in supported_candidates:
+        matching_profiles = [
+            profile
+            for profile in profile_data.get(item["url"], [])
+            if profile["low_hz"] <= frequency_hz <= profile["high_hz"]
+            and profile.get("profile_label")
+        ]
+        matching_profiles.sort(
+            key=lambda profile: (
+                profile["sample_rate_hz"],
+                profile["profile_label"].casefold(),
+            )
         )
-        if not frequency_supported:
-            continue
+        tune_url = (
+            make_openwebrx_launcher_url(item, cfg, matching_profiles)
+            if matching_profiles
+            else make_openwebrx_url(item, cfg)
+        )
         found.append({
             **item,
             "distance_km": round(distance, 1),
             "source": source,
             "listed_online": source == "Receiverbook",
             "frequency_supported": True,
-            "tune_url": make_openwebrx_url(item, cfg),
+            "matching_profiles": matching_profiles,
+            "tune_url": tune_url,
         })
 
     if any(source == "Receiverbook" for _item, _distance, source in candidates):
