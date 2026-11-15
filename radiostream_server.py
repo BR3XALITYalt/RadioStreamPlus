@@ -500,6 +500,8 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             self.send_file("index.html", "text/html")
         elif route == "/sdr":
             self.send_file("sdr.html", "text/html")
+        elif route == "/openwebrx-launch.html":
+            self.send_file("openwebrx-launch.html", "text/html")
         elif route == "/app.js":
             self.send_file("app.js", "application/javascript")
         elif route == "/favicon.ico":
