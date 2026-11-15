@@ -33,6 +33,16 @@ let polling=false;
 let consecutiveFailures=0;
 const SERVER_FAILURE_LIMIT=3;
 
+function formatFrequency(frequencyKHz){
+  const hz=Number(frequencyKHz)*1000;
+  if(!Number.isFinite(hz))return "Unknown";
+  const number=value=>String(Number(value.toFixed(6)));
+  if(hz>=1e9)return number(hz/1e9)+" GHz";
+  if(hz>=1e6)return number(hz/1e6)+" MHz";
+  if(hz>=1e3)return number(hz/1e3)+" kHz";
+  return number(hz)+" Hz";
+}
+
 function stopReceiver(reason){
   activeUrl="";
   frame.src="about:blank";
@@ -51,7 +61,7 @@ async function refresh(){
     if(state.current){
       const item=state.current;
       const url=item.tune_url;
-      station.innerHTML=`<strong>${escapeHtml(item.name)}</strong>${escapeHtml(item.location)} · ${item.distance_km} km · ${item.snr_hf} dB SNR · rotates in ${Math.ceil((state.remaining_seconds||0)/60)} min`;
+      station.innerHTML=`<strong>${escapeHtml(item.name)}</strong>${escapeHtml(item.location)} · ${item.distance_km} km · ${item.snr_hf} dB SNR<br>Frequency: ${formatFrequency(state.config?.frequency_khz)} · next rotation in ${Math.ceil((state.remaining_seconds||0)/60)} min`;
       message.hidden=true;
       if(url!==activeUrl){activeUrl=url;frame.src=url;}
     }else{
