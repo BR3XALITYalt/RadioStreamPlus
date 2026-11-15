@@ -8,7 +8,7 @@ RadioStream+ is a small Python application with a browser-based management inter
 
 | File | Responsibility |
 |---|---|
-| `radiostream.py` | Launcher and application updater |
+| `radiostream_bootstrap.py` | Windows executable bootstrap, source cache, and offline fallback |\n| `radiostream.py` | Python launcher and application updater |
 | `radiostream_server.py` | Local HTTP server, API routes, current receiver, and rotation |
 | `radiostream_core.py` | Settings validation, receiver directory handling, map filtering, frequency parsing, and local data files |
 | `manage.html` | Management interface, map, source controls, and radio presets |
@@ -16,7 +16,7 @@ RadioStream+ is a small Python application with a browser-based management inter
 | `index.html` | Transparent OBS information overlay |
 | `app.js` | Overlay client-side behavior |
 | `maintenance.js` and `m.html` | Update maintenance screen and page handling |
-| `tests/test_radiostream.py` | Automated Python tests |
+| `tests/test_radiostream.py` | Application tests |\n| `tests/test_bootstrap.py` | Source archive and cache tests |
 
 ## Request flow
 
