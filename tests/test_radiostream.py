@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import radiostream_core as rs
@@ -76,6 +77,16 @@ class RadioStreamTests(unittest.TestCase):
             rs.validate_config({"zoom": 99})
         with self.assertRaises(ValueError):
             rs.validate_config({"mode": "unsupported"})
+
+    def test_frequency_config_accepts_hz_through_ghz_range(self):
+        low = rs.validate_config({"frequency_khz": 0.001})
+        high = rs.validate_config({"frequency_khz": 300000000})
+        self.assertEqual(low["frequency_khz"], 0.001)
+        self.assertEqual(high["frequency_khz"], 300000000)
+        with self.assertRaises(ValueError):
+            rs.validate_config({"frequency_khz": 0.0009})
+        with self.assertRaises(ValueError):
+            rs.validate_config({"frequency_khz": 300000001})
 
     def test_overlay_message_defaults_match_current_artwork(self):
         self.assertIn("Every ${M} minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
@@ -192,6 +203,28 @@ class RadioStreamTests(unittest.TestCase):
         self.assertEqual(receivers[0]["lon"], 20.1)
         self.assertEqual(receivers[0]["type"], "openwebrx")
 
+    def test_parses_openwebrx_plus_profile_frequency_ranges(self):
+        payload = {
+            "sdrs": [{
+                "profiles": [
+                    {"center_freq": 100000000, "sample_rate": 2000000},
+                    {"center_freq": 462500000, "sample_rate": 8000000},
+                ]
+            }]
+        }
+        ranges = rs.parse_openwebrx_plus_frequency_ranges(payload)
+        self.assertEqual(ranges, [
+            {"low_hz": 99000000.0, "high_hz": 101000000.0},
+            {"low_hz": 458500000.0, "high_hz": 466500000.0},
+        ])
+
+    def test_parses_classic_openwebrx_bands(self):
+        ranges = rs.parse_openwebrx_classic_frequency_ranges(
+            "name=Example\nversion=0.19.1\nbands=3000000-30000000\n"
+        )
+        self.assertEqual(ranges, [{"low_hz": 3000000.0, "high_hz": 30000000.0}])
+        self.assertEqual(rs.parse_openwebrx_classic_frequency_ranges("name=Example\n"), [])
+
     def test_receiverbook_rejects_local_urls(self):
         self.assertIsNone(rs.normalize_receiverbook_url("http://127.0.0.1:8073/"))
         self.assertIsNone(rs.normalize_receiverbook_url("http://localhost:8073/"))
@@ -232,25 +265,44 @@ class RadioStreamTests(unittest.TestCase):
             )
         )
         rs.config = dict(self.cfg)
-        rs.receiverbook_data = [{
-            "id": "receiverbook:https://sdr.example.test/",
-            "name": "Nearby OpenWebRX",
-            "station": "Test station",
-            "version": "1.2.130",
-            "type": "openwebrx",
-            "url": "https://sdr.example.test/",
-            "lat": 10.1,
-            "lon": 20.1,
-        }]
+        checked_at = rs.time.time()
+        rs.receiverbook_data = [
+            {
+                "id": "receiverbook:https://sdr.example.test/",
+                "name": "Nearby OpenWebRX",
+                "station": "Test station",
+                "version": "1.2.130",
+                "type": "openwebrx",
+                "url": "https://sdr.example.test/",
+                "lat": 10.1,
+                "lon": 20.1,
+                "frequency_ranges": [{"low_hz": 4000000, "high_hz": 5000000}],
+                "frequency_checked_at": checked_at,
+            },
+            {
+                "id": "receiverbook:https://other-sdr.example.test/",
+                "name": "Out-of-band OpenWebRX",
+                "station": "Other station",
+                "version": "1.2.130",
+                "type": "openwebrx",
+                "url": "https://other-sdr.example.test/",
+                "lat": 10.2,
+                "lon": 20.2,
+                "frequency_ranges": [{"low_hz": 100000000, "high_hz": 110000000}],
+                "frequency_checked_at": checked_at,
+            },
+        ]
         rs.receiverbook_fetched_monotonic = rs.time.monotonic()
         rs.receiverbook_fetched_at = "2026-11-14T00:00:00Z"
         rs.receiverbook_error = None
-        found, meta = rs.discover_openwebrx()
+        with patch.object(rs, "save_receiverbook_cache"):
+            found, meta = rs.discover_openwebrx()
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["name"], "Nearby OpenWebRX")
         self.assertEqual(found[0]["source"], "Receiverbook")
         self.assertTrue(found[0]["listed_online"])
         self.assertEqual(urlsplit(found[0]["tune_url"]).fragment, "freq=4625000,mod=usb")
+        self.assertEqual(meta["nearby_count"], 2)
         self.assertEqual(meta["found_count"], 1)
 
     def test_directory_schema_validation(self):
