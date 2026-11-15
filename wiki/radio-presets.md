@@ -39,6 +39,6 @@ Select it in **Saved presets** and choose **Delete**. This removes the saved pre
 
 ## Storage
 
-Presets are stored locally in `radio_presets.json`, separately from `radiostream.json`. They remain available across application restarts and are not replaced by application updates. The file is user data and is excluded from Git by the repository's `.gitignore`.
+Presets are stored locally in `radio_presets.json`, separately from `radiostream.json`. They remain available across application restarts and application updates.
 
 Up to 200 presets can be stored. Each preset must have a name, a supported frequency, a supported mode, and a valid passband.
