@@ -66,7 +66,8 @@ class RadioStreamTests(unittest.TestCase):
         self.assertTrue(rs.parse_receiver(self.sample(bands=[100000, 30000000]), self.cfg)["band_ok"])
 
     def test_tune_url_applies_global_frequency_mode_zoom_and_controls(self):
-        parsed = urlsplit(rs.make_tune_url({"url": "http://kiwi.example.test:8073"}, self.cfg))
+        cfg = dict(self.cfg, passband_low=50, passband_high=4000)
+        parsed = urlsplit(rs.make_tune_url({"url": "http://kiwi.example.test:8073"}, cfg))
         params = parse_qs(parsed.query, keep_blank_values=True)
         self.assertEqual(params["f"], ["4625usbz9"])
         self.assertEqual(params["pb"], ["50,4000"])
