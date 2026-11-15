@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -304,6 +305,87 @@ class RadioStreamTests(unittest.TestCase):
         self.assertEqual(urlsplit(found[0]["tune_url"]).fragment, "freq=4625000,mod=usb")
         self.assertEqual(meta["nearby_count"], 2)
         self.assertEqual(meta["found_count"], 1)
+
+    def test_custom_openwebrx_instance_validation(self):
+        instance = rs.normalize_custom_openwebrx_instance({
+            "url": "https://sdr.example.test/radio/",
+            "name": "My receiver",
+            "lat": 10.1,
+            "lon": 20.1,
+        })
+        self.assertEqual(instance["id"], "custom:https://sdr.example.test/radio/")
+        self.assertEqual(instance["name"], "My receiver")
+        self.assertEqual(instance["lat"], 10.1)
+        with self.assertRaises(ValueError):
+            rs.normalize_custom_openwebrx_instance({
+                "url": "http://127.0.0.1:8073/",
+                "lat": 10,
+                "lon": 20,
+            })
+        with self.assertRaises(ValueError):
+            rs.normalize_custom_openwebrx_instance({
+                "url": "https://sdr.example.test/",
+                "lat": 95,
+                "lon": 20,
+            })
+
+    def test_custom_openwebrx_instances_persist_and_can_be_removed(self):
+        previous_path = rs.OPENWEBRX_CUSTOM_PATH
+        previous_data = rs.openwebrx_custom_data
+        self.addCleanup(lambda: (
+            setattr(rs, "OPENWEBRX_CUSTOM_PATH", previous_path),
+            setattr(rs, "openwebrx_custom_data", previous_data),
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            rs.OPENWEBRX_CUSTOM_PATH = rs.Path(directory) / "openwebrx_custom.json"
+            rs.openwebrx_custom_data = []
+            instance = {
+                "url": "https://sdr.example.test/",
+                "name": "Favorite receiver",
+                "lat": 10.1,
+                "lon": 20.1,
+            }
+            added = rs.add_custom_openwebrx_instance(instance)
+            self.assertEqual(len(added), 1)
+            rs.openwebrx_custom_data = []
+            rs.load_custom_openwebrx_instances()
+            self.assertEqual(rs.openwebrx_custom_data[0]["name"], "Favorite receiver")
+            removed = rs.remove_custom_openwebrx_instance(added[0]["id"])
+            self.assertEqual(removed, [])
+
+    def test_custom_openwebrx_discovery_works_without_receiverbook(self):
+        previous_config = rs.config
+        self.addCleanup(lambda: setattr(rs, "config", previous_config))
+        rs.config = dict(self.cfg)
+        rs.config["openwebrx_receiverbook_enabled"] = False
+        instance = {
+            "id": "custom:https://sdr.example.test/",
+            "name": "My receiver",
+            "station": "",
+            "version": "1.2.130",
+            "type": "openwebrx",
+            "url": "https://sdr.example.test/",
+            "lat": 10.1,
+            "lon": 20.1,
+            "frequency_ranges": [{"low_hz": 4000000, "high_hz": 5000000}],
+            "frequency_checked_at": rs.time.time(),
+        }
+        with (
+            patch.object(rs, "fetch_receiverbook_directory") as fetch_receiverbook,
+            patch.object(rs, "get_custom_openwebrx_instances", return_value=[instance]),
+            patch.object(rs, "save_custom_openwebrx_frequency_cache"),
+        ):
+            found, meta = rs.discover_openwebrx()
+        fetch_receiverbook.assert_not_called()
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["source"], "Custom")
+        self.assertFalse(found[0]["listed_online"])
+        self.assertFalse(meta["receiverbook_enabled"])
+        self.assertEqual(meta["custom_count"], 1)
+
+    def test_receiverbook_source_setting_requires_boolean(self):
+        with self.assertRaises(ValueError):
+            rs.validate_config({"openwebrx_receiverbook_enabled": "false"})
 
     def test_directory_schema_validation(self):
         good = {"schema": 1, "receivers": [self.sample()]}
