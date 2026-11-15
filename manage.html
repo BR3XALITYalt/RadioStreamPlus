@@ -120,7 +120,6 @@ input[type=range] { padding:0; accent-color:#4294dd; }
             <div class="field wide"><label for="overlay-reload-notice">Overlay: automatic receiver reload notice</label><textarea id="overlay-reload-notice" rows="5" maxlength="800" spellcheck="true"></textarea><span class="hint">Use ${M} for the saved receiver rotation time. Use line breaks to control layout (up to 8 lines).</span></div>
             <div class="field wide"><label for="overlay-black-notice">Overlay: black-screen warning</label><textarea id="overlay-black-notice" rows="3" maxlength="800" spellcheck="true"></textarea><span class="hint">Shown in the OBS overlay. Use line breaks to control its layout (up to 8 lines).</span></div>
           </div>
-          <p class="hint" style="margin:12px 0 0;">Changing the modulation mode loads its KiwiSDR default passband. You can adjust the passband edges manually afterward. Settings are applied to KiwiSDR receivers. OpenWebRX instances are listed separately and open directly in a new tab.</p>
           <div class="section-actions"><button id="save" class="primary">Save settings</button><button id="next">Next receiver</button></div>
           <div id="save-status" class="status" role="status"></div>
           <div id="current" class="current"><strong>No receiver selected</strong><span>Choose an area, find receivers, and select one.</span></div>
@@ -132,12 +131,9 @@ input[type=range] { padding:0; accent-color:#4294dd; }
         <div class="panel-body">
           <p id="result-line">Set a pin and select Find receivers in range.</p>
           <div id="receiver-list"><p class="hint">No receiver list loaded yet.</p></div>
-          <div id="directory-status" class="status" role="status"></div>
           <div class="directory-section">
             <h3>OpenWebRX instances</h3>
-            <p class="hint">Public listings from Receiverbook. These open directly and are not included in KiwiSDR rotation.</p>
             <div id="openwebrx-list"><p class="hint">No OpenWebRX list loaded yet.</p></div>
-            <div id="openwebrx-status" class="status" role="status"></div>
           </div>
         </div>
       </section>
@@ -326,7 +322,7 @@ function renderReceivers(receivers, openwebrx) {
   if(!receivers.length) {
     const empty=document.createElement("p");
     empty.className="hint";
-    empty.textContent="No GPS-tagged KiwiSDR receivers were found inside this range. Try increasing the radius.";
+    empty.textContent="No KiwiSDR receivers found in this area. Try increasing the search range.";
     list.append(empty);
   }
   for(const item of receivers) {
@@ -350,7 +346,7 @@ function renderReceivers(receivers, openwebrx) {
   if(!openwebrx.length) {
     const empty=document.createElement("p");
     empty.className="hint";
-    empty.textContent="No GPS-tagged OpenWebRX instances were found inside this range.";
+    empty.textContent="No OpenWebRX receivers found in this area.";
     openList.append(empty);
   }
   for(const item of openwebrx) {
@@ -382,16 +378,12 @@ function renderReceivers(receivers, openwebrx) {
 }
 async function discover() {
   try {
-    $("scan").disabled=true; $("result-line").textContent="Searching the cached public directory…";
+    $("scan").disabled=true; $("result-line").textContent="Searching for receivers…";
     await saveSettings(false);
     const data=await api("/api/discover");
     renderReceivers(data.receivers, data.openwebrx || []);
     const openMeta=data.openwebrx_meta || {};
     $("result-line").textContent=`Found ${data.meta.found_count} KiwiSDR receivers and ${openMeta.found_count || 0} OpenWebRX instances in range; ${data.meta.available_count} KiwiSDR available and ${data.meta.blocked_count || 0} blocked at ${$("frequency").value} kHz.`;
-    $("directory-status").textContent=`KiwiSDR directory: ${data.meta.directory_count} listed · snapshot ${data.meta.fetched_at || "date unavailable"}${data.meta.cache_error?" · refresh warning: "+data.meta.cache_error:""}`;
-    $("directory-status").className="status"+(data.meta.cache_error?" error":"");
-    $("openwebrx-status").textContent=`Receiverbook: ${openMeta.directory_count || 0} online OpenWebRX instances · snapshot ${openMeta.fetched_at || "date unavailable"}${openMeta.cache_error?" · refresh warning: "+openMeta.cache_error:""}`;
-    $("openwebrx-status").className="status"+(openMeta.cache_error?" error":"");
     const state=await api("/api/state"); showCurrent(state);
   } catch(error) {
     $("result-line").textContent=error.message;
@@ -410,7 +402,7 @@ $("refresh").addEventListener("click",async()=>{
   try{
     const data=await api("/api/refresh-directory",{});
     const warnings=[data.kiwi_error,data.receiverbook_error].filter(Boolean);
-    setStatus(`Directory refresh complete: ${data.count} KiwiSDR and ${data.receiverbook_count} OpenWebRX entries.${warnings.length?" One or more sources returned a refresh warning.":""}`,warnings.length>0);
+    setStatus(warnings.length ? "Some receiver listings could not be refreshed." : "Receiver listings refreshed.", warnings.length>0);
     await discover();
   }catch(e){setStatus(e.message,true);}
 });
