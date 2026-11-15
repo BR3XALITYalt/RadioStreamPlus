@@ -32,11 +32,11 @@ Then open:
 - [OBS overlay](http://localhost:5056/overlay)
 - [SDR player](http://localhost:5056/sdr)
 
-The launcher starts the local server and checks the project's public `main` branch for application updates. Keep the terminal or process running while using the pages.
+The launcher starts the local server and checks for application updates automatically. Keep RadioStream+ running while using the pages.
 
 ## First run
 
-The first start creates `radiostream.json` beside the application files. The application also creates local data files as needed for receiver caches, preferences, custom OpenWebRX entries, and radio presets.
+On first run, RadioStream+ creates `radiostream.json` for its settings. Receiver caches, preferences, custom OpenWebRX entries, and radio presets are saved locally as you use the application.
 
 Open the management page and:
 
