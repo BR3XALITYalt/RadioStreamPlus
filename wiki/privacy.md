@@ -2,7 +2,7 @@
 
 **Navigation:** [Wiki home](main.md) · [Configuration](configuration.md) · [Architecture](architecture.md) · [Troubleshooting](troubleshooting.md)
 
-RadioStream+ runs a local server and requests public receiver, map, and propagation data. This page summarizes the data paths.
+RadioStream+ runs a local server and requests public receiver, map, and propagation data.
 
 ## Local server
 
@@ -39,9 +39,7 @@ A custom receiver is still an independently operated public service. Its operato
 
 ## Local files
 
-Configuration, presets, station preferences, receiver lists, and caches are stored locally in the application directory. They are not uploaded to the project repository by RadioStream+.
-
-The repository's `.gitignore` excludes these files by default. Avoid manually committing files that contain your location, personal receiver list, or other private configuration.
+Configuration, presets, station preferences, receiver lists, and caches are stored on the computer running RadioStream+. RadioStream+ does not synchronize these files to a cloud account.
 
 ## Limitations
 
