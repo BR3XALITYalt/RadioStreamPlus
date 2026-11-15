@@ -343,6 +343,26 @@ class RadioStreamTests(unittest.TestCase):
             {"low_hz": 458500000.0, "high_hz": 466500000.0},
         ])
 
+    def test_openwebrx_plus_profile_parser_preserves_device_and_profile_names(self):
+        profiles = rs.parse_openwebrx_plus_profiles({
+            "sdrs": [{
+                "name": "RSPdx",
+                "profiles": [{
+                    "name": "40m",
+                    "center_freq": 7000000,
+                    "sample_rate": 2000000,
+                }],
+            }],
+        })
+        self.assertEqual(len(profiles), 1)
+        self.assertEqual(profiles[0]["sdr_name"], "RSPdx")
+        self.assertEqual(profiles[0]["profile_name"], "40m")
+        self.assertEqual(profiles[0]["profile_label"], "RSPdx 40m")
+        self.assertEqual(profiles[0]["center_hz"], 7000000)
+        self.assertEqual(profiles[0]["sample_rate_hz"], 2000000)
+        self.assertEqual(profiles[0]["low_hz"], 6000000)
+        self.assertEqual(profiles[0]["high_hz"], 8000000)
+
     def test_parses_classic_openwebrx_bands(self):
         ranges = rs.parse_openwebrx_classic_frequency_ranges(
             "name=Example\nversion=0.19.1\nbands=3000000-30000000\n"
@@ -371,6 +391,23 @@ class RadioStreamTests(unittest.TestCase):
         fm_cfg = dict(self.cfg, mode="nbfm")
         fm_url = rs.make_openwebrx_url(receiver, fm_cfg)
         self.assertEqual(urlsplit(fm_url).fragment, "freq=4625000,mod=nfm")
+
+    def test_openwebrx_profile_launcher_url_includes_matching_profile_labels(self):
+        receiver = {"url": "https://sdr.example.test/radio/"}
+        profiles = [{
+            "profile_label": "RSPdx 40m",
+            "low_hz": 6000000,
+            "high_hz": 8000000,
+            "sample_rate_hz": 2000000,
+        }]
+        launch_url = rs.make_openwebrx_launcher_url(receiver, self.cfg, profiles)
+        parsed = urlsplit(launch_url)
+        query = parse_qs(parsed.query)
+        self.assertEqual(parsed.path, "/openwebrx-launch.html")
+        self.assertEqual(query["url"], ["https://sdr.example.test/radio/"])
+        self.assertEqual(query["frequency_hz"], ["4625000"])
+        self.assertEqual(query["mode"], ["usb"])
+        self.assertEqual(json.loads(query["profiles"][0]), ["RSPdx 40m"])
 
     def test_discover_openwebrx_uses_saved_search_radius(self):
         previous = (
@@ -420,13 +457,28 @@ class RadioStreamTests(unittest.TestCase):
         rs.receiverbook_fetched_monotonic = rs.time.monotonic()
         rs.receiverbook_fetched_at = "2026-11-14T00:00:00Z"
         rs.receiverbook_error = None
-        with patch.object(rs, "save_receiverbook_cache"):
+        matching_profile = {
+            "sdr_name": "RSPdx",
+            "profile_name": "40m",
+            "profile_label": "RSPdx 40m",
+            "center_hz": 7000000,
+            "sample_rate_hz": 2000000,
+            "low_hz": 6000000,
+            "high_hz": 8000000,
+        }
+        with (
+            patch.object(rs, "save_receiverbook_cache"),
+            patch.object(rs, "fetch_openwebrx_profiles", return_value=[matching_profile]),
+        ):
             found, meta = rs.discover_openwebrx()
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["name"], "Nearby OpenWebRX")
         self.assertEqual(found[0]["source"], "Receiverbook")
         self.assertTrue(found[0]["listed_online"])
-        self.assertEqual(urlsplit(found[0]["tune_url"]).fragment, "freq=4625000,mod=usb")
+        self.assertEqual(found[0]["matching_profiles"], [matching_profile])
+        launch_query = parse_qs(urlsplit(found[0]["tune_url"]).query)
+        self.assertEqual(urlsplit(found[0]["tune_url"]).path, "/openwebrx-launch.html")
+        self.assertEqual(json.loads(launch_query["profiles"][0]), ["RSPdx 40m"])
         self.assertEqual(meta["nearby_count"], 2)
         self.assertEqual(meta["found_count"], 1)
 
@@ -498,6 +550,7 @@ class RadioStreamTests(unittest.TestCase):
             patch.object(rs, "fetch_receiverbook_directory") as fetch_receiverbook,
             patch.object(rs, "get_custom_openwebrx_instances", return_value=[instance]),
             patch.object(rs, "save_custom_openwebrx_frequency_cache"),
+            patch.object(rs, "fetch_openwebrx_profiles", return_value=[]),
         ):
             found, meta = rs.discover_openwebrx()
         fetch_receiverbook.assert_not_called()
