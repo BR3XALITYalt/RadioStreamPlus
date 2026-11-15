@@ -1509,7 +1509,7 @@ def parse_openwebrx_plus_profiles(payload: Any) -> list[dict[str, Any]]:
     for sdr in payload["sdrs"]:
         if not isinstance(sdr, dict) or not isinstance(sdr.get("profiles"), list):
             continue
-        sdr_name = str(sdr.get("name") or "").strip()
+        sdr_name = str(sdr.get("name"))
         for profile in sdr["profiles"]:
             if not isinstance(profile, dict):
                 continue
@@ -1528,8 +1528,8 @@ def parse_openwebrx_plus_profiles(payload: Any) -> list[dict[str, Any]]:
             high_hz = center_hz + sample_rate_hz / 2
             if not math.isfinite(low_hz) or not math.isfinite(high_hz) or low_hz < 0:
                 continue
-            profile_name = str(profile.get("name") or "").strip()
-            profile_label = " ".join(part for part in (sdr_name, profile_name) if part)
+            profile_name = str(profile.get("name"))
+            profile_label = f"{sdr_name} {profile_name}"
             profiles.append({
                 "sdr_name": sdr_name,
                 "profile_name": profile_name,
