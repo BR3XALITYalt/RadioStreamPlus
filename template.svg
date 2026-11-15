@@ -84,25 +84,7 @@
          offset="0"
          id="stop3161" />
     </linearGradient>
-    <marker
-       style="overflow:visible"
-       id="TriangleStart-1"
-       refX="0"
-       refY="0"
-       orient="auto-start-reverse"
-       inkscape:stockid="TriangleStart"
-       markerWidth="3.32399984"
-       markerHeight="3.84277438"
-       viewBox="0 0 5.3244081 6.15538509"
-       inkscape:isstock="true"
-       inkscape:collect="always"
-       preserveAspectRatio="xMidYMid">
-      <path
-         transform="scale(0.5)"
-         style="fill:white;/*literal chrome skill issue*/fill-rule:evenodd;stroke:white;stroke-width:1pt"
-         d="M 5.77,0 -2.88,5 V -5 Z"
-         id="path135-2" />
-    </marker>
+    
   </defs>
   <g
      inkscape:label="Layer 1"
@@ -402,26 +384,27 @@
     <g
        id="g8144"
        transform="translate(19.60264,8.7005892)"
-       inkscape:label="faq">
+       inkscape:label="attribution">
       <g
          id="g11768">
         <text
            xml:space="preserve"
-           style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:48px;font-family:Cantarell;-inkscape-font-specification:'Cantarell Bold';fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1;stroke-linejoin:bevel;stroke-dasharray:none;stroke-opacity:1"
+           style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:28px;font-family:Cantarell;-inkscape-font-specification:'Cantarell Bold';fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1"
            x="62.951778"
-           y="1034.1622"
-           id="text6942">Powered by Radio Stream+: <a xlink:href="https://github.com/BR3XALITYalt/RadioStreamPlus" style="fill:#8cc7ff;text-decoration:underline">[link here]</a></text>
-        <path
-           style="fill:none;fill-opacity:1;stroke:#ffffff;stroke-width:6.7;stroke-linejoin:bevel;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#TriangleStart-1)"
-           d="m 38.303623,999.92805 v 23.98035"
-           id="path7007-7"
-           sodipodi:nodetypes="cc" />
-        <use
-           x="0"
-           y="0"
-           xlink:href="#path7007-7"
-           id="use386"
-           transform="translate(551.87715)" />
+           y="1010"
+           id="text6942"><tspan
+             sodipodi:role="line"
+             id="tspan6940"
+             x="62.951778"
+             y="1010">Powered by Radio Stream+:</tspan><a
+             xlink:href="https://github.com/BR3XALITYalt/RadioStreamPlus"
+             style="fill:#8cc7ff;text-decoration:underline"><tspan
+               style="font-size:18px"
+               sodipodi:role="line"
+               id="tspan6941"
+               x="62.951778"
+               y="1040">https://github.com/BR3XALITYalt/RadioStreamPlus</tspan></a></text>
+        
       </g>
       <text
          xml:space="preserve"
