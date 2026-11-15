@@ -49,6 +49,7 @@ The updater only replaces its explicit application-file allowlist. It never upda
 3. Optionally use **Use browser location** to ask the browser to move the pin to the computer's current location. This is optional; RadioStream+ does not request location permission on its own.
 4. Set the frequency and mode, then choose **Find receivers in range**.
 5. Select an available KiwiSDR receiver. OpenWebRX entries have a direct link and open in a separate browser tab.
+6. To manage OpenWebRX sources, add your own instances in the **Your OpenWebRX instances** section. Set the map pin to each receiver location or enter its coordinates, then add its public URL. Turn off **Include public Receiverbook listings** to search only your custom list.
 
 The map uses Leaflet and OpenStreetMap tiles. Map data is fetched from OpenStreetMap's public tile service and attribution is shown in the map. Internet access is required for the map tiles.
 
@@ -76,6 +77,7 @@ Default passbands (low / high):
 
 Changing the modulation mode in the management page applies that mode's default passband. You can then edit either edge manually. Existing saved passbands are preserved when the page loads.
 
+- `openwebrx_receiverbook_enabled`: whether public Receiverbook OpenWebRX listings are included in discovery (default `true`). Turn it off to use only custom entries.
 - `rotation_minutes`: how long to stay on a receiver before switching (3–60 minutes; default 14).
 - `overlay_reload_notice`: multiline text shown in the OBS overlay to describe the periodic receiver reload. The `${M}` placeholder is replaced with `rotation_minutes` when displayed.
 - `overlay_black_notice`: multiline text shown in the OBS overlay if the receiver window stays black.
@@ -88,7 +90,7 @@ Frequency, mode, zoom, volume, and passband settings are applied consistently wh
 
 RadioStream+ downloads the schema-1 public receiver list from the AetherSDR KiwiSDR directory mirror at `https://cdn.aethersdr.com/kiwi.json`. The directory's published cache window is 30 minutes; RadioStream+ respects that and keeps a local cache in `kiwi_directory_cache.json` so a temporary directory outage does not immediately erase the map. The mirror's `fetched_at` timestamp is shown in the management page.
 
-OpenWebRX discovery uses Receiverbook's public listings and coordinates. Nearby receivers are checked against their advertised frequency ranges, and only receivers with a profile covering the selected frequency are shown. Their links open the receiver at the selected frequency and modulation. OpenWebRX+ only accepts tuning inside its currently active profile, so a receiver may still reject the link when a different profile is active. OpenWebRX instances open separately in the browser and are not part of automatic KiwiSDR rotation.
+OpenWebRX discovery can use Receiverbook's public listings, your own saved instances, or both. Custom entries require a public HTTP or HTTPS URL and map coordinates; they are stored locally in `openwebrx_custom.json`. Disable **Include public Receiverbook listings** in the management page to search only your custom list. Nearby instances from enabled sources are checked against their advertised frequency ranges, and only receivers with a profile covering the selected frequency are shown. Their links open the receiver at the selected frequency and modulation. OpenWebRX+ only accepts tuning inside its currently active profile, so a receiver may still reject the link when a different profile is active. OpenWebRX instances open separately in the browser and are not part of automatic KiwiSDR rotation.
 
 KiwiSDR coordinates come from the AetherSDR directory's `gps` pair. OpenWebRX coordinates come from Receiverbook's GeoJSON `location.coordinates` pair. Both sources use the same map center and search radius. KiwiSDR receivers without a valid GPS fix, outside the selected radius or configured frequency band, marked offline, flagged by the directory, or listed as full are not selected for playback. The map can still show unavailable KiwiSDR entries when their locations are valid.
 
@@ -125,7 +127,7 @@ HamQSL's [Solar-Terrestrial Data FAQ](https://www.hamqsl.com/FAQ.html#Solar) off
 - The server listens only on the local loopback interface (`127.0.0.1`).
 - The optional browser geolocation action sends its coordinates only to the local RadioStream+ server, where they are saved in `radiostream.json`.
 - The public KiwiSDR directory request goes to the AetherSDR mirror. Receiver selection and playback then load the chosen public KiwiSDR website directly in the browser frame.
-- OpenWebRX discovery requests Receiverbook's public map page. Selecting its links opens the listed receiver directly in a separate browser tab.
+- OpenWebRX discovery requests Receiverbook's public map page when that source is enabled. Custom instance URLs and coordinates remain in the local `openwebrx_custom.json` file. Selecting an entry opens its receiver directly in a separate browser tab.
 - The map uses OpenStreetMap tiles through its public tile service. Follow the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) for high-volume or redistributed deployments.
 - RadioStream+ does not bypass a receiver's own password, connection limit, idle timeout, or other access rules. A selected receiver can still refuse or terminate a connection.
 - The receiver directory is cached and may lag real-world availability. Rotation is based on the published snapshot and is not a promise that every station will accept a connection.
