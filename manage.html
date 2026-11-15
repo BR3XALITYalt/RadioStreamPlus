@@ -66,6 +66,21 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background:#171d21; color:#eee; }
 .leaflet-popup-content { font-size:12px; line-height:1.45; }
 .leaflet-container a.leaflet-popup-close-button { color:#ddd; }
+.map-legend {
+  min-width:190px;
+  padding:9px 11px;
+  border:1px solid #46525c;
+  border-radius:5px;
+  background:rgba(23,29,33,.96);
+  color:#edf0f2;
+  box-shadow:0 1px 5px rgba(0,0,0,.4);
+}
+.map-legend-title { margin-bottom:6px; font-size:12px; font-weight:650; }
+.map-legend-row { display:flex; align-items:center; gap:8px; margin-top:5px; font-size:11px; }
+.map-legend-swatch { display:inline-block; flex:0 0 11px; width:11px; height:11px; border:1.5px solid; border-radius:50%; }
+.map-legend-swatch.kiwi-available { border-color:#8ac9a3; background:#3e9664; }
+.map-legend-swatch.kiwi-unavailable { border-color:#a5a5a5; background:#777; }
+.map-legend-swatch.openwebrx { border-color:#8ec5ff; background:#397eb8; }
 @media (max-width:850px) { .layout { grid-template-columns:1fr; } #map { height:440px; } }
 @media (max-width:460px) { main { padding:10px; } header { padding:13px; } .field-grid { grid-template-columns:1fr; } .field.wide { grid-column:auto; } #map { height:360px; } }
 </style>
@@ -85,7 +100,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
         <button id="locate">Use browser location</button>
         <button id="scan" class="primary">Find receivers in range</button>
         <button id="refresh">Refresh directory</button>
-        <span class="hint">Green/gray: KiwiSDR · blue: OpenWebRX. Click the map or drag the center pin to move the search area.</span>
+        <span class="hint">See the map legend for receiver types and status colors. Click the map or drag the center pin to move the search area.</span>
       </div>
     </section>
 
@@ -138,6 +153,24 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom:19,
   attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
+
+const legend = L.control({position:"bottomright"});
+legend.onAdd = () => {
+  const container = L.DomUtil.create("div", "map-legend");
+  container.setAttribute("role", "group");
+  container.setAttribute("aria-label", "Map legend");
+  container.innerHTML = `
+    <div class="map-legend-title">Receiver legend</div>
+    <div class="map-legend-row"><span class="map-legend-swatch kiwi-available"></span><span>KiwiSDR · available</span></div>
+    <div class="map-legend-row"><span class="map-legend-swatch kiwi-unavailable"></span><span>KiwiSDR · unavailable or blocked</span></div>
+    <div class="map-legend-row"><span class="map-legend-swatch openwebrx"></span><span>OpenWebRX · Receiverbook</span></div>
+  `;
+  L.DomEvent.disableClickPropagation(container);
+  L.DomEvent.disableScrollPropagation(container);
+  return container;
+};
+legend.addTo(map);
+
 let center = {lat:20, lon:0};
 let centerMarker = L.marker([center.lat, center.lon], {draggable:true}).addTo(map);
 let radiusCircle = L.circle([center.lat, center.lon], {radius:500000, color:"#5ea7e8", weight:1.5, fillOpacity:.08}).addTo(map);
@@ -298,13 +331,13 @@ function renderReceivers(receivers, openwebrx) {
   }
   for(const item of receivers) {
     const marker=L.circleMarker([item.lat,item.lon],{radius:6,color:item.available?"#8ac9a3":"#a5a5a5",weight:1,fillColor:item.available?"#3e9664":"#777",fillOpacity:.85}).addTo(map);
-    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>${safeText(item.location)}<br>${item.distance_km} km · ${item.snr_hf} dB SNR<br>${item.users}/${item.users_max||"?"} users`);
+    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>${safeText(item.location)}<br>${item.distance_km} km · ${item.snr_hf} dB SNR<br>${item.users}/${item.users_max||"?"} users<br><small>Listed by <a href="https://kiwisdr.com/public/" target="_blank" rel="noopener">KiwiSDR</a></small>`);
     receiverMarkers.push(marker);
     const card=document.createElement("div"); card.className="receiver";
     const info=document.createElement("div");
     const status=item.blocked?"Blocked":item.available?"Available":"Unavailable";
     const preferenceLabel={like:"Liked",dislike:"Disliked"}[item.preference];
-    info.innerHTML=`<strong>${safeText(item.name)}</strong><small>${safeText(item.location)} · ${item.distance_km} km<br>${item.snr_hf} dB SNR · ${item.users}/${item.users_max||"?"} users · ${status}${preferenceLabel?" · "+preferenceLabel:""}${item.band_ok?"":" · frequency unsupported"}</small>`;
+    info.innerHTML=`<strong>${safeText(item.name)}</strong><small>${safeText(item.location)} · ${item.distance_km} km<br>${item.snr_hf} dB SNR · ${item.users}/${item.users_max||"?"} users · ${status}${preferenceLabel?" · "+preferenceLabel:""}${item.band_ok?"":" · frequency unsupported"}</small><small>Listed by <a href="https://kiwisdr.com/public/" target="_blank" rel="noopener">KiwiSDR</a></small>`;
     const actions=document.createElement("div"); actions.className="receiver-actions";
     const button=document.createElement("button"); button.className="use"; button.textContent=item.blocked?"Blocked":item.available?"Use":"Unavailable"; button.disabled=!item.available;
     button.addEventListener("click",()=>selectReceiver(item.id));
@@ -331,7 +364,9 @@ function renderReceivers(receivers, openwebrx) {
     name.textContent=item.name;
     const details=document.createElement("small");
     details.textContent=`OpenWebRX ${item.version || "version not listed"} · ${item.distance_km} km away`;
-    info.append(name,details);
+    const listedBy=document.createElement("small");
+    listedBy.innerHTML='Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>';
+    info.append(name,details,listedBy);
     const actions=document.createElement("div");
     actions.className="receiver-actions";
     const link=document.createElement("a");
