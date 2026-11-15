@@ -62,13 +62,13 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .custom-openwebrx-entry small { display:block; margin-top:3px; color:#9ba7ae; font-size:11px; overflow-wrap:anywhere; }
 .preset-bar { padding:10px 12px; margin-bottom:16px; }
 .preset-bar h2 { margin:0 0 8px; font-size:13px; font-weight:650; }
-.preset-toolbar { display:grid; grid-template-columns:minmax(160px,1.1fr) auto minmax(180px,1fr) auto; gap:8px; align-items:end; }
+.preset-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
 .preset-bar .field { gap:4px; }
 .preset-actions { display:flex; flex-wrap:nowrap; gap:6px; }
 .preset-actions button { padding:8px 9px; white-space:nowrap; }
 .preset-toolbar > button { min-height:36px; white-space:nowrap; }
+.preset-save-field { grid-column:1; }
 #radio-preset-status { min-height:14px; margin-top:5px; }
-@media (max-width:620px) { .preset-toolbar { grid-template-columns:minmax(0,1fr) auto; } .preset-save-field { grid-column:1; } .preset-toolbar > button { grid-column:2; } }
 @media (max-width:460px) { .preset-toolbar { grid-template-columns:1fr; } .preset-save-field, .preset-toolbar > button { grid-column:auto; } .preset-actions { flex-wrap:wrap; } }
 .receiver-openwebrx { border-left:3px solid #68a9e9; }
 .receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
@@ -121,7 +121,21 @@ input[type=range] { padding:0; accent-color:#4294dd; }
   <nav><a href="/overlay" target="_blank" rel="noopener">Overlay</a><a href="/sdr" target="_blank" rel="noopener">SDR player</a></nav>
 </header>
 <main>
-  <section class="panel preset-bar" aria-labelledby="preset-bar-title">
+
+  <div class="layout">
+    <section class="panel">
+      <h2>Receiver area</h2>
+      <div id="map" aria-label="OpenStreetMap receiver selection map"></div>
+      <div class="map-tools">
+        <button id="locate">Use browser location</button>
+        <button id="scan" class="primary">Find receivers in range</button>
+        <button id="refresh">Refresh directory</button>
+        <span class="hint">See the map legend for receiver types and status colors. Click the map or drag the center pin to move the search area.</span>
+      </div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:16px;">
+        <section class="panel preset-bar" aria-labelledby="preset-bar-title">
     <h2 id="preset-bar-title">Radio presets</h2>
     <div class="preset-toolbar">
       <div class="field">
@@ -140,19 +154,6 @@ input[type=range] { padding:0; accent-color:#4294dd; }
     </div>
     <div id="radio-preset-status" class="status" role="status"></div>
   </section>
-  <div class="layout">
-    <section class="panel">
-      <h2>Receiver area</h2>
-      <div id="map" aria-label="OpenStreetMap receiver selection map"></div>
-      <div class="map-tools">
-        <button id="locate">Use browser location</button>
-        <button id="scan" class="primary">Find receivers in range</button>
-        <button id="refresh">Refresh directory</button>
-        <span class="hint">See the map legend for receiver types and status colors. Click the map or drag the center pin to move the search area.</span>
-      </div>
-    </section>
-
-    <div style="display:flex;flex-direction:column;gap:16px;">
       <section class="panel">
         <h2>Radio settings</h2>
         <div class="panel-body">
