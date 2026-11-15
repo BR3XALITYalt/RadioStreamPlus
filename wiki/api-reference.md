@@ -25,7 +25,7 @@ POST requests use a JSON object as the request body.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/config` | Validate and save general settings, including named `frequency_links` and the zero-based `active_frequency_index` |
+| POST | `/api/config` | Validate and save general settings, including the numeric `frequencies_khz` rotation list |
 | POST | `/api/openwebrx/custom` | Add or update a custom OpenWebRX instance |
 | POST | `/api/openwebrx/custom/delete` | Remove a custom OpenWebRX instance by ID |
 | POST | `/api/presets` | Save a radio preset; saving an existing name updates it |
