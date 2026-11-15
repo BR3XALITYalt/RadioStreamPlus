@@ -581,7 +581,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                     "count": kiwi_count,
                     "kiwi_error": kiwi_error,
                     "receiverbook_fetched_at": openwebrx_meta["fetched_at"],
-                    "receiverbook_count": openwebrx_meta["directory_count"],
+                    "receiverbook_count": openwebrx_meta["receiverbook_count"],
                     "receiverbook_error": openwebrx_meta["cache_error"],
                     "openwebrx_in_range": len(openwebrx),
                 })
