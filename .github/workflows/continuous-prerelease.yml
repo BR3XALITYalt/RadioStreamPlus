@@ -40,8 +40,20 @@ jobs:
         with:
           name: RadioStreamPlus-Windows
           path: dist/RadioStreamPlus.exe
+          archive: true
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish Nightly download link
+        shell: pwsh
+        run: |
+          @"
+          ## Nightly Windows build
+
+          [Download the latest RadioStream+ Windows build](https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease/main/RadioStreamPlus-Windows.zip)
+
+          The download is a ZIP containing `RadioStreamPlus.exe`.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
   update-prerelease:
     needs: build-windows
@@ -83,31 +95,33 @@ jobs:
 
           The release includes the current source archive and an experimental Windows x64 executable. The executable downloads the current source when online and can use its cached source when GitHub is unavailable.
 
+          The latest Windows executable is also available through [nightly.link](https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease/main/RadioStreamPlus-Windows.zip).
+
           If something goes wrong, report it in [GitHub Issues](https://github.com/BR3XALITYalt/RadioStreamPlus/issues).
 
           EOF
 
-          printf '\nBuild commit: %s\n' "$COMMIT_SHA" >> release-notes.md
+          printf '\\nBuild commit: %s\\n' "$COMMIT_SHA" >> release-notes.md
 
           if gh release view continuous --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release edit continuous \
-              --repo "$REPOSITORY" \
-              --title "Continuous pre-release" \
-              --notes-file release-notes.md \
-              --prerelease \
+            gh release edit continuous \\
+              --repo "$REPOSITORY" \\
+              --title "Continuous pre-release" \\
+              --notes-file release-notes.md \\
+              --prerelease \\
               --latest=false
           else
-            gh release create continuous \
-              --repo "$REPOSITORY" \
-              --title "Continuous pre-release" \
-              --notes-file release-notes.md \
-              --prerelease \
-              --latest=false \
+            gh release create continuous \\
+              --repo "$REPOSITORY" \\
+              --title "Continuous pre-release" \\
+              --notes-file release-notes.md \\
+              --prerelease \\
+              --latest=false \\
               --verify-tag
           fi
 
-          gh release upload continuous \
-            RadioStreamPlus-prerelease.zip \
-            release-assets/RadioStreamPlus.exe \
-            --repo "$REPOSITORY" \
+          gh release upload continuous \\
+            RadioStreamPlus-prerelease.zip \\
+            release-assets/RadioStreamPlus.exe \\
+            --repo "$REPOSITORY" \\
             --clobber
