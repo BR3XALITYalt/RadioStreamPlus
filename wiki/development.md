@@ -26,7 +26,7 @@ From the project root:
 python -m unittest discover -s tests -v
 ```
 
-The tests cover configuration validation, receiver parsing, directory handling, tuning URLs, frequency-range parsing, and custom data persistence.
+The tests cover configuration and preset validation, receiver parsing, directory handling, tuning URLs, frequency-range parsing, and persistence of custom receiver lists and radio presets.
 
 ## Update behavior
 
