@@ -4,7 +4,7 @@
 
 ## Source layout
 
-The main application is intentionally small:
+Runtime components:
 
 - `radiostream.py`: updater and process launcher.
 - `radiostream_server.py`: local HTTP server and state management.
@@ -33,8 +33,6 @@ The tests cover configuration and preset validation, receiver parsing, directory
 The launcher checks the public `main` branch for changes on a two-minute interval. It verifies downloaded files against their Git blob SHA-1 values before installing them.
 
 The launcher has an explicit allowlist of application files. It does not replace user data such as configuration, caches, preferences, custom OpenWebRX instances, or radio presets. The launcher itself is not self-updated by this mechanism.
-
-The `wiki/` directory and the test suite are repository documentation and development resources, not runtime application files.
 
 ## Contribution guidelines
 
