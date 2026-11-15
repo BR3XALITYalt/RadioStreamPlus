@@ -94,6 +94,7 @@ small { display:block; margin-top:20px; color:#87939b; line-height:1.5; }
   function finishSelection() {
     if (redirected || !selectedProfileId || activeProfileId !== selectedProfileId) return;
     redirected = true;
+    window.clearTimeout(timeout);
     status.textContent = "Selected " + selectedProfileName + ". Opening the receiver...";
     detail.textContent = "Tuning to " + (frequencyHz / 1000000).toFixed(6).replace(/0+$/, "").replace(/\.$/, "") +
       " MHz in " + mode.toUpperCase() + " mode.";
@@ -179,6 +180,7 @@ small { display:block; margin-top:20px; color:#87939b; line-height:1.5; }
     if (redirected || failed) return;
     failed = true;
     window.clearTimeout(timeout);
+    try { socket.close(); } catch (_) {}
     openWithoutSwitching("The receiver's profile connection was blocked or failed.");
   };
 
