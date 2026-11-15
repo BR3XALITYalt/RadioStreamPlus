@@ -44,6 +44,15 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 #receiver-list, #openwebrx-list { display:flex; flex-direction:column; gap:8px; max-height:450px; overflow:auto; }
 .directory-section { margin-top:16px; padding-top:14px; border-top:1px solid #30383e; }
 .directory-section h3 { margin:0 0 8px; font-size:13px; font-weight:650; }
+.source-toggle { display:flex; align-items:center; gap:8px; margin:2px 0 8px; color:#c5cdd2; font-size:12px; }
+.source-toggle input { width:16px; min-height:16px; margin:0; }
+.custom-openwebrx-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:9px; margin-top:10px; }
+.custom-openwebrx-form .wide { grid-column:1 / -1; }
+.custom-openwebrx-actions { display:flex; flex-wrap:wrap; gap:8px; }
+#custom-openwebrx-list { display:flex; flex-direction:column; gap:7px; }
+.custom-openwebrx-entry { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:9px; border:1px solid #343e45; border-radius:5px; background:#14191d; }
+.custom-openwebrx-entry strong { display:block; font-size:12px; }
+.custom-openwebrx-entry small { display:block; margin-top:3px; color:#9ba7ae; font-size:11px; overflow-wrap:anywhere; }
 .receiver-openwebrx { border-left:3px solid #68a9e9; }
 .receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
 .receiver { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px; border:1px solid #343e45; border-radius:5px; background:#14191d; }
@@ -137,6 +146,25 @@ input[type=range] { padding:0; accent-color:#4294dd; }
           <div class="directory-section">
             <h3>OpenWebRX instances</h3>
             <div id="openwebrx-list"><p class="hint">No OpenWebRX list loaded yet.</p></div>
+          </div>
+          <div class="directory-section">
+            <h3>OpenWebRX sources</h3>
+            <label class="source-toggle" for="receiverbook-enabled"><input id="receiverbook-enabled" type="checkbox" checked> Include public Receiverbook listings</label>
+            <p class="hint">Turn this off to use only the instances you add below.</p>
+            <h3>Your OpenWebRX instances</h3>
+            <div id="custom-openwebrx-list"><p class="hint">No custom instances added.</p></div>
+            <form id="custom-openwebrx-form" class="custom-openwebrx-form">
+              <div class="field wide"><label for="custom-openwebrx-url">Receiver URL</label><input id="custom-openwebrx-url" type="url" placeholder="https://sdr.example.net/" required></div>
+              <div class="field wide"><label for="custom-openwebrx-name">Display name (optional)</label><input id="custom-openwebrx-name" type="text" maxlength="160" placeholder="Uses the hostname when blank"></div>
+              <div class="field"><label for="custom-openwebrx-lat">Latitude</label><input id="custom-openwebrx-lat" type="number" min="-90" max="90" step="any" required></div>
+              <div class="field"><label for="custom-openwebrx-lon">Longitude</label><input id="custom-openwebrx-lon" type="number" min="-180" max="180" step="any" required></div>
+              <div class="custom-openwebrx-actions wide">
+                <button id="use-map-center" type="button">Use map pin for coordinates</button>
+                <button class="primary" type="submit">Add instance</button>
+              </div>
+              <p class="hint wide">Set the map pin to the receiver's location, then use it for coordinates, or enter the coordinates manually. Custom instances still need to fall inside the selected map range and support the selected frequency.</p>
+            </form>
+            <div id="custom-openwebrx-status" class="status" role="status"></div>
           </div>
         </div>
       </section>
@@ -248,7 +276,8 @@ function readSettings() {
     passband_low:Number($("pb-low").value),
     passband_high:Number($("pb-high").value),
     overlay_reload_notice:$("overlay-reload-notice").value,
-    overlay_black_notice:$("overlay-black-notice").value
+    overlay_black_notice:$("overlay-black-notice").value,
+    openwebrx_receiverbook_enabled:$("receiverbook-enabled").checked
   };
 }
 function fillSettings(cfg) {
@@ -268,6 +297,7 @@ function fillSettings(cfg) {
   $("pb-high").value=cfg.passband_high;
   $("overlay-reload-notice").value=cfg.overlay_reload_notice ?? "";
   $("overlay-black-notice").value=cfg.overlay_black_notice ?? "";
+  $("receiverbook-enabled").checked=cfg.openwebrx_receiverbook_enabled !== false;
   updateArea();
 }
 async function saveSettings(showMessage=true) {
@@ -371,8 +401,12 @@ function renderReceivers(receivers, openwebrx) {
     openList.append(empty);
   }
   for(const item of openwebrx) {
+    const sourceLabel=item.source === "Custom" ? "Your custom list" : "Receiverbook";
+    const sourceDetails=item.source === "Custom"
+      ? "Added manually"
+      : 'Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>';
     const marker=L.circleMarker([item.lat,item.lon],{radius:7,color:"#8ec5ff",weight:1.5,fillColor:"#397eb8",fillOpacity:.9}).addTo(map);
-    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><a href="${safeText(item.tune_url)}" target="_blank" rel="noopener">Open at selected frequency</a><br><small>Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a></small>`);
+    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><a href="${safeText(item.tune_url)}" target="_blank" rel="noopener">Open at selected frequency</a><br><small>${item.source === "Custom" ? "Added manually" : 'Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>'}</small>`);
     receiverMarkers.push(marker);
     const card=document.createElement("div");
     card.className="receiver receiver-openwebrx";
@@ -382,8 +416,7 @@ function renderReceivers(receivers, openwebrx) {
     const details=document.createElement("small");
     details.textContent=`OpenWebRX ${item.version || "version not listed"} · ${item.distance_km} km away`;
     const listedBy=document.createElement("small");
-    listedBy.innerHTML='Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>';
-    info.append(name,details,listedBy);
+    listedBy.innerHTML=sourceDetails;
     const actions=document.createElement("div");
     actions.className="receiver-actions";
     const link=document.createElement("a");
@@ -397,6 +430,93 @@ function renderReceivers(receivers, openwebrx) {
     openList.append(card);
   }
 }
+async function renderCustomOpenwebrx(instances) {
+  const list=$("custom-openwebrx-list");
+  list.replaceChildren();
+  if(!instances.length) {
+    const empty=document.createElement("p");
+    empty.className="hint";
+    empty.textContent="No custom instances added.";
+    list.append(empty);
+    return;
+  }
+  for(const item of instances) {
+    const card=document.createElement("div");
+    card.className="custom-openwebrx-entry";
+    const info=document.createElement("div");
+    const name=document.createElement("strong");
+    name.textContent=item.name;
+    const url=document.createElement("small");
+    url.textContent=item.url;
+    const location=document.createElement("small");
+    location.textContent=`Location: ${item.lat}, ${item.lon}`;
+    info.append(name,url,location);
+    const remove=document.createElement("button");
+    remove.type="button";
+    remove.textContent="Remove";
+    remove.addEventListener("click",()=>removeCustomOpenwebrx(item.id));
+    card.append(info,remove);
+    list.append(card);
+  }
+}
+async function loadCustomOpenwebrx() {
+  const data=await api("/api/openwebrx/custom");
+  await renderCustomOpenwebrx(data.instances || []);
+}
+async function removeCustomOpenwebrx(id) {
+  try {
+    const data=await api("/api/openwebrx/custom/delete",{id});
+    await renderCustomOpenwebrx(data.instances || []);
+    $("custom-openwebrx-status").textContent="Custom instance removed.";
+    $("custom-openwebrx-status").className="status good";
+    await discover();
+  } catch(error) {
+    $("custom-openwebrx-status").textContent=error.message;
+    $("custom-openwebrx-status").className="status error";
+  }
+}
+$("use-map-center").addEventListener("click",()=>{
+  $("custom-openwebrx-lat").value=center.lat.toFixed(6);
+  $("custom-openwebrx-lon").value=center.lon.toFixed(6);
+});
+$("custom-openwebrx-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const button=$("custom-openwebrx-form").querySelector('button[type="submit"]');
+  button.disabled=true;
+  try {
+    const data=await api("/api/openwebrx/custom",{
+      url:$("custom-openwebrx-url").value.trim(),
+      name:$("custom-openwebrx-name").value.trim(),
+      lat:Number($("custom-openwebrx-lat").value),
+      lon:Number($("custom-openwebrx-lon").value)
+    });
+    await renderCustomOpenwebrx(data.instances || []);
+    $("custom-openwebrx-status").textContent="Custom OpenWebRX instance saved.";
+    $("custom-openwebrx-status").className="status good";
+    $("custom-openwebrx-url").value="";
+    $("custom-openwebrx-name").value="";
+    await discover();
+  } catch(error) {
+    $("custom-openwebrx-status").textContent=error.message;
+    $("custom-openwebrx-status").className="status error";
+  } finally {
+    button.disabled=false;
+  }
+});
+$("receiverbook-enabled").addEventListener("change",async()=>{
+  try {
+    await saveSettings(false);
+    $("custom-openwebrx-status").textContent=$("receiverbook-enabled").checked
+      ? "Receiverbook listings enabled."
+      : "Receiverbook listings disabled. Only your custom instances will be searched.";
+    $("custom-openwebrx-status").className="status good";
+    await discover();
+  } catch(error) {
+    $("custom-openwebrx-status").textContent=error.message;
+    $("custom-openwebrx-status").className="status error";
+  }
+});
+
 async function discover() {
   try {
     $("scan").disabled=true; $("result-line").textContent="Searching for receivers…";
@@ -432,6 +552,7 @@ $("refresh").addEventListener("click",async()=>{
   try {
     const data=await api("/api/state");
     fillSettings(data.config); showCurrent(data);
+    await loadCustomOpenwebrx();
   } catch(error) { setStatus(error.message,true); }
 })();
 </script>
