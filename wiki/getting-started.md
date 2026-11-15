@@ -12,7 +12,7 @@ RadioStream+ uses Python's standard library for its local server. The management
 
 ## Windows executable
 
-For Windows x64, download [RadioStreamPlus.exe](https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus.exe) from the continuous pre-release and run it. The executable includes Python, downloads the current source from GitHub, and keeps a local source cache. The first successful launch needs internet access; later launches can use the cached source when GitHub is unavailable.
+For Windows x64, download [the latest Windows executable package](https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease.yml/main/windows-executable.zip) through nightly.link, extract `RadioStreamPlus.exe`, and run it. The same executable is attached to the [continuous pre-release](https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus.exe). The executable includes Python, downloads the current source from GitHub, and keeps a local source cache. The first successful launch needs internet access; later launches can use the cached source when GitHub is unavailable.
 
 Settings, preferences, presets, and caches are stored in `%LOCALAPPDATA%\RadioStreamPlus\data`.
 
