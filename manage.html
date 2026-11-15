@@ -563,12 +563,6 @@ function renderReceivers(receivers, openwebrx) {
   }
 
   const openList=list;
-  if(!openwebrx.length) {
-    const empty=document.createElement("p");
-    empty.className="hint";
-    empty.textContent="No OpenWebRX receivers with a matching range were found.";
-    openList.append(empty);
-  }
   for(const item of openwebrx) {
     const sourceDetails=item.source === "Custom"
       ? "Added manually"
