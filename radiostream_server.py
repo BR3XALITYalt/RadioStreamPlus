@@ -545,6 +545,12 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 "application/xml; charset=utf-8",
                 headers={"Content-Disposition": 'attachment; filename="radiostream-presets.xml"'},
             )
+        elif route == "/api/backup/export":
+            self.send_bytes(
+                core.export_all_data_xml(),
+                "application/xml; charset=utf-8",
+                headers={"Content-Disposition": 'attachment; filename="radiostream-plus-backup.xml"'},
+            )
         elif route == "/api/solar":
             body, error_text, cache_status = fetch_solar_xml()
             if body is not None:
@@ -594,6 +600,22 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                     "added": result["added"],
                     "updated": result["updated"],
                 })
+                return
+
+            if route == "/api/backup/import":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 5 * 1024 * 1024:
+                    raise ValueError("Backup XML is empty or exceeds the 5 MB limit")
+                xml_text = self.rfile.read(length).decode("utf-8-sig")
+                with STATE_REFRESH_LOCK:
+                    result = core.import_all_data_xml(xml_text)
+                    reset_frequency_shuffle()
+                    with STATE_LOCK:
+                        current_receiver = None
+                        current_started_at = 0.0
+                        last_receiver_ids = []
+                        last_receiver_error = None
+                self.send_json({"ok": True, **result})
                 return
 
             data = read_json_body(self)
