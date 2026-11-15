@@ -174,6 +174,22 @@ def get_maintenance_state() -> dict[str, Any]:
         return dict(MAINTENANCE_STATE)
 
 
+def take_next_frequency(
+    frequencies: list[float],
+    current: float,
+    remaining: list[float],
+) -> tuple[float | None, list[float]]:
+    """Take one frequency from a shuffled bag, refilling it without repeating current."""
+    available = [frequency for frequency in remaining if frequency in frequencies and frequency != current]
+    if not available:
+        available = [frequency for frequency in frequencies if frequency != current]
+        random.shuffle(available)
+    if not available:
+        return None, []
+    next_frequency = available.pop(0)
+    return next_frequency, available
+
+
 def reset_frequency_shuffle() -> None:
     """Prepare a shuffled frequency order, starting from the configured first frequency."""
     global frequency_shuffle_remaining
@@ -196,18 +212,13 @@ def advance_frequency() -> bool:
             return False
 
         with STATE_LOCK:
-            remaining = [
-                frequency for frequency in frequency_shuffle_remaining
-                if frequency in frequencies and frequency != current
-            ]
-            if not remaining:
-                remaining = [frequency for frequency in frequencies if frequency != current]
-                random.shuffle(remaining)
-            if not remaining:
+            next_frequency, frequency_shuffle_remaining = take_next_frequency(
+                frequencies,
+                current,
+                frequency_shuffle_remaining,
+            )
+            if next_frequency is None:
                 return False
-
-            next_frequency = remaining.pop(0)
-            frequency_shuffle_remaining = remaining
             core.config["frequency_khz"] = next_frequency
     print(f"[radio] Switched to {next_frequency:g} kHz")
     return True
