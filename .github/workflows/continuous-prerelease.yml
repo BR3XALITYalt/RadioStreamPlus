@@ -13,7 +13,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Check Python files
+        run: |
+          python -m compileall -q radiostream_bootstrap.py radiostream.py radiostream_core.py radiostream_server.py
+          python -m unittest discover -s tests -v
+
+      - name: Build executable
+        run: |
+          python -m pip install --disable-pip-version-check pyinstaller
+          python -m PyInstaller --noconfirm --clean --onefile --console --name RadioStreamPlus radiostream_bootstrap.py
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executable
+          path: dist/RadioStreamPlus.exe
+          if-no-files-found: error
+          retention-days: 14
+
   update-prerelease:
+    needs: build-windows
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +52,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Download Windows executable
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-executable
+          path: release-assets
 
       - name: Package source
         run: |
@@ -43,6 +80,8 @@ jobs:
           This pre-release is updated automatically whenever a commit is pushed to `main`.
 
           You probably do not need to install this pre-release if RadioStream+ is already updating normally. Use it for a manual or offline installation, or when the automatic updater is unavailable or has failed.
+
+          The release includes the current source archive and an experimental Windows x64 executable. The executable downloads the current source when online and can use its cached source when GitHub is unavailable.
 
           If something goes wrong, report it in [GitHub Issues](https://github.com/BR3XALITYalt/RadioStreamPlus/issues).
 
@@ -67,6 +106,8 @@ jobs:
               --verify-tag
           fi
 
-          gh release upload continuous RadioStreamPlus-prerelease.zip \
+          gh release upload continuous \
+            RadioStreamPlus-prerelease.zip \
+            release-assets/RadioStreamPlus.exe \
             --repo "$REPOSITORY" \
             --clobber
