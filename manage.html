@@ -60,9 +60,16 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .custom-openwebrx-entry { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:9px; border:1px solid #343e45; border-radius:5px; background:#14191d; }
 .custom-openwebrx-entry strong { display:block; font-size:12px; }
 .custom-openwebrx-entry small { display:block; margin-top:3px; color:#9ba7ae; font-size:11px; overflow-wrap:anywhere; }
-.preset-row, .preset-save-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:9px; margin-top:9px; }
-.preset-actions { display:flex; flex-wrap:wrap; gap:6px; }
-.preset-save-row button { min-height:36px; }
+.preset-bar { padding:10px 12px; margin-bottom:16px; }
+.preset-bar h2 { margin:0 0 8px; font-size:13px; font-weight:650; }
+.preset-toolbar { display:grid; grid-template-columns:minmax(160px,1.1fr) auto minmax(180px,1fr) auto; gap:8px; align-items:end; }
+.preset-bar .field { gap:4px; }
+.preset-actions { display:flex; flex-wrap:nowrap; gap:6px; }
+.preset-actions button { padding:8px 9px; white-space:nowrap; }
+.preset-toolbar > button { min-height:36px; white-space:nowrap; }
+#radio-preset-status { min-height:14px; margin-top:5px; }
+@media (max-width:620px) { .preset-toolbar { grid-template-columns:minmax(0,1fr) auto; } .preset-save-field { grid-column:1; } .preset-toolbar > button { grid-column:2; } }
+@media (max-width:460px) { .preset-toolbar { grid-template-columns:1fr; } .preset-save-field, .preset-toolbar > button { grid-column:auto; } .preset-actions { flex-wrap:wrap; } }
 .receiver-openwebrx { border-left:3px solid #68a9e9; }
 .receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
 .receiver { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px; border:1px solid #343e45; border-radius:5px; background:#14191d; }
@@ -114,6 +121,25 @@ input[type=range] { padding:0; accent-color:#4294dd; }
   <nav><a href="/overlay" target="_blank" rel="noopener">Overlay</a><a href="/sdr" target="_blank" rel="noopener">SDR player</a></nav>
 </header>
 <main>
+  <section class="panel preset-bar" aria-labelledby="preset-bar-title">
+    <h2 id="preset-bar-title">Radio presets</h2>
+    <div class="preset-toolbar">
+      <div class="field">
+        <label for="radio-preset-select">Saved presets</label>
+        <select id="radio-preset-select"><option value="">No presets saved</option></select>
+      </div>
+      <div class="preset-actions">
+        <button id="load-radio-preset" type="button" disabled>Load</button>
+        <button id="delete-radio-preset" type="button" disabled>Delete</button>
+      </div>
+      <div class="field preset-save-field">
+        <label for="radio-preset-name">Save current frequency as</label>
+        <input id="radio-preset-name" type="text" maxlength="80" placeholder="e.g. WWV 10 MHz">
+      </div>
+      <button id="save-radio-preset" class="primary" type="button">Save preset</button>
+    </div>
+    <div id="radio-preset-status" class="status" role="status"></div>
+  </section>
   <div class="layout">
     <section class="panel">
       <h2>Receiver area</h2>
@@ -147,19 +173,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
             <div class="field wide"><label for="overlay-reload-notice">Overlay: automatic receiver reload notice</label><textarea id="overlay-reload-notice" rows="5" maxlength="800" spellcheck="true"></textarea><span class="hint">Use ${M} for the saved receiver rotation time. Use line breaks to control layout (up to 8 lines).</span></div>
             <div class="field wide"><label for="overlay-black-notice">Overlay: black-screen warning</label><textarea id="overlay-black-notice" rows="3" maxlength="800" spellcheck="true"></textarea><span class="hint">Shown in the OBS overlay. Use line breaks to control its layout (up to 8 lines).</span></div>
           </div>
-          <div class="directory-section">
-            <h3>Radio presets</h3>
-            <div class="preset-row">
-              <div class="field"><label for="radio-preset-select">Saved presets</label><select id="radio-preset-select"><option value="">No presets saved</option></select></div>
-              <div class="preset-actions"><button id="load-radio-preset" type="button" disabled>Load preset</button><button id="delete-radio-preset" type="button" disabled>Delete</button></div>
-            </div>
-            <div class="preset-save-row">
-              <div class="field"><label for="radio-preset-name">Save current frequency as</label><input id="radio-preset-name" type="text" maxlength="80" placeholder="e.g. WWV 10 MHz"></div>
-              <button id="save-radio-preset" class="primary" type="button">Save preset</button>
-            </div>
-            <p class="hint">Presets save frequency, mode, and passband. Create one for each WWV frequency, the Pip, the buzzer, or any station you regularly monitor.</p>
-            <div id="radio-preset-status" class="status" role="status"></div>
-          </div>
+
           <div class="section-actions"><button id="save" class="primary">Save settings</button><button id="next">Next receiver</button></div>
           <div id="save-status" class="status" role="status"></div>
           <div id="current" class="current"><strong>No receiver selected</strong><span>Choose an area, find receivers, and select one.</span></div>
