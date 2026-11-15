@@ -490,8 +490,11 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
             raise ValueError("Each preset frequency must be unique")
         frequencies_khz.append(frequency)
 
+    active_frequency = item.get("frequency_khz")
+    if active_frequency is None:
+        active_frequency = frequencies_khz[0]
     frequency_khz = clamp_number(
-        item.get("frequency_khz", frequencies_khz[0]),
+        active_frequency,
         "Preset active frequency (kHz)",
         0.001,
         300000000,
@@ -512,8 +515,11 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
     if passband_low >= passband_high:
         raise ValueError("Preset passband low must be smaller than passband high")
 
+    rotation_value = item.get("rotation_minutes")
+    if rotation_value is None:
+        rotation_value = DEFAULT_CONFIG["rotation_minutes"]
     rotation_minutes = clamp_number(
-        item.get("rotation_minutes", DEFAULT_CONFIG["rotation_minutes"]),
+        rotation_value,
         "Preset rotation interval",
         3,
         60,
