@@ -31,6 +31,10 @@ The main settings include:
 | Passband low / high | Passband edges in Hz relative to the carrier |
 | Overlay messages | Custom text displayed in the OBS overlay |
 
+The **Frequency links** selector chooses which frequency RadioStream+ searches and tunes. Each row has a name and a frequency; use **+** to add another row beneath it or **−** to remove one. Changing the active link saves the selection and refreshes receiver discovery. Up to 32 links can be stored for a station with multiple assigned frequencies.
+
+The active link is used for KiwiSDR band filtering and tuning, as well as the frequency sent to OpenWebRX. The other links remain saved until selected.
+
 The **Save settings** button writes the settings to `radiostream.json`.
 
 ## Receiver results
