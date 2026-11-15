@@ -2,7 +2,7 @@
 
 **Navigation:** [Wiki home](main.md) · [Management Page](management.md) · [Radio Presets](radio-presets.md) · [API Reference](api-reference.md)
 
-RadioStream+ stores its general settings in `radiostream.json`, in the application directory. The management page is the recommended way to change them. The file can also be edited while RadioStream+ is stopped.
+RadioStream+ stores its general settings in `radiostream.json`. The management page is the recommended way to change them. The file can also be edited while RadioStream+ is stopped.
 
 ## General settings
 
@@ -46,7 +46,7 @@ Each message supports up to 800 characters and eight lines. Line breaks are pres
 
 ## Local data files
 
-These files are created beside the application when needed:
+These files are created in the application data directory when needed. When using the Python launcher, this is the application directory. The Windows executable uses `%LOCALAPPDATA%\\RadioStreamPlus\\data`, separate from its downloaded source files:
 
 | File | Contents |
 |---|---|
@@ -58,7 +58,7 @@ These files are created beside the application when needed:
 | `radio_presets.json` | User-created frequency, mode, and passband presets |
 | `solar_xml_cache.xml` | Cached propagation feed |
 
-Settings, preferences, presets, custom receiver entries, and directory caches are stored locally. The automatic updater leaves these files intact.
+Settings, preferences, presets, custom receiver entries, and directory caches are stored locally. The automatic updater leaves these files intact. The Windows executable keeps its downloaded source and offline source archive under `%LOCALAPPDATA%\\RadioStreamPlus`, outside the data directory.
 
 ## Example configuration
 
