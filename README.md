@@ -130,6 +130,10 @@ HamQSL's [Solar-Terrestrial Data FAQ](https://www.hamqsl.com/FAQ.html#Solar) off
 
 ## Project origin and licensing
 
-The original RadioStream+ code maintained by BR3XALITY is licensed under the PolyForm Noncommercial License 1.0.0. It permits non-commercial use, redistribution, and modification under the terms in [LICENSE](LICENSE), including the required BR3XALITY notice. The adapted UVB-76 overlay artwork and information panel retain the Unlicense from [chfour/uvbinfobar](https://github.com/chfour/uvbinfobar). KiwiSDR rotation was independently implemented using public receiver metadata, with [noaa-apt/kiwi-reload](https://github.com/noaa-apt/kiwi-reload) as a reference; its GPL-3.0 source code is not bundled.
+The original RadioStream+ software maintained by BR3XALITY is licensed under the **GNU General Public License version 3 only** (SPDX: `GPL-3.0-only`). See [LICENSE](LICENSE) for the complete terms. This is strong copyleft: people may use, modify, redistribute, and sell copies, but anyone conveying a modified version must provide the corresponding source under GPL-3.0.
+
+The inherited UVB-76 overlay artwork and information-panel material retain the Unlicense terms under which they were obtained. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the component boundaries and other third-party notices.
+
+This change applies to the current version and future releases. Previously published versions remain under the licenses that accompanied them; changing the current license does not retroactively revoke permissions granted for older releases.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for upstream attribution and third-party licensing details.
