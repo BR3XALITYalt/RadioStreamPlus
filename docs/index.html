@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f9fb">
+  <meta name="description" content="RadioStream+ is a local radio receiver manager and OBS information overlay for KiwiSDR and OpenWebRX.">
+  <title>RadioStream+ - Radio receiver manager</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #20262b;
+      --muted: #5c6872;
+      --line: #dce2e7;
+      --surface: #ffffff;
+      --page: #f7f9fb;
+      --blue: #1769aa;
+      --blue-dark: #125487;
+      --green: #247a50;
+      --content: 1040px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 28px;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--blue); }
+    a:hover { color: var(--blue-dark); }
+
+    a:focus-visible {
+      outline: 3px solid #8cc7ff;
+      outline-offset: 3px;
+      border-radius: 3px;
+    }
+
+    .wrap {
+      width: min(var(--content), calc(100% - 40px));
+      margin-inline: auto;
+    }
+
+    .site-header {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-size: 19px;
+      font-weight: 650;
+      letter-spacing: -0.5px;
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      display: block;
+      flex: none;
+    }
+
+    .site-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 22px;
+      font-size: 14px;
+    }
+
+    .site-nav a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .site-nav a:hover { color: var(--ink); }
+
+    main { padding-bottom: 72px; }
+
+    .hero {
+      padding: 88px 0 78px;
+      max-width: 760px;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      margin-bottom: 18px;
+      font-size: clamp(42px, 7vw, 68px);
+      line-height: 1.05;
+      letter-spacing: -3px;
+      font-weight: 680;
+    }
+
+    .lead {
+      max-width: 650px;
+      margin-bottom: 28px;
+      color: var(--muted);
+      font-size: clamp(18px, 2.5vw, 21px);
+      line-height: 1.55;
+    }
+
+    .primary-link,
+    .secondary-link {
+      min-height: 46px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 17px;
+      border: 1px solid var(--blue);
+      border-radius: 5px;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .primary-link:hover {
+      border-color: var(--blue-dark);
+      background: var(--blue-dark);
+      color: #fff;
+    }
+
+    .hero-note {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 26px;
+      padding: 25px 0 54px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .features h2 {
+      margin-bottom: 5px;
+      font-size: 15px;
+      letter-spacing: -0.2px;
+    }
+
+    .features p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .downloads {
+      padding-top: 72px;
+      scroll-margin-top: 24px;
+    }
+
+    .section-heading {
+      max-width: 620px;
+      margin-bottom: 28px;
+    }
+
+    .section-heading h2 {
+      margin-bottom: 8px;
+      font-size: clamp(28px, 4vw, 36px);
+      line-height: 1.15;
+      letter-spacing: -1.2px;
+    }
+
+    .section-heading p:last-child {
+      margin-bottom: 0;
+      color: var(--muted);
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .download-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-height: 350px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+    }
+
+    .download-card h3 {
+      margin-bottom: 8px;
+      font-size: 23px;
+      line-height: 1.25;
+      letter-spacing: -0.6px;
+    }
+
+    .download-card > p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .platforms {
+      margin: 2px 0 20px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .requirements {
+      margin: 0 0 22px;
+      padding-left: 19px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .requirements li + li { margin-top: 5px; }
+
+    .download-card .primary-link {
+      margin-top: auto;
+    }
+
+    .secondary-link {
+      border-color: var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .secondary-link:hover {
+      border-color: #aab5be;
+      background: #f7f9fb;
+      color: var(--ink);
+    }
+
+    .card-links {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      margin-top: 14px;
+      font-size: 13px;
+    }
+
+    .card-links a { color: var(--muted); }
+
+    .site-footer {
+      padding: 22px 0 30px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .site-footer p { margin: 0; }
+
+    @media (max-width: 680px) {
+      .site-header {
+        align-items: flex-start;
+        flex-direction: column;
+        justify-content: center;
+        gap: 9px;
+        padding: 17px 0;
+      }
+
+      .site-nav { gap: 17px; }
+      .hero { padding: 66px 0 58px; }
+      h1 { letter-spacing: -2px; }
+      .features { grid-template-columns: 1fr; gap: 20px; }
+      .downloads { padding-top: 56px; }
+      .download-grid { grid-template-columns: 1fr; }
+      .download-card { min-height: 0; }
+      .download-card .primary-link { margin-top: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header wrap">
+    <a class="brand" href="#top" aria-label="RadioStream+ home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="5" fill="#20262b"/>
+        <path d="M7 10h18M7 16h13M7 22h8" fill="none" stroke="#8cc7ff" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="24" cy="22" r="3" fill="#72cf9a"/>
+      </svg>
+      <span>RadioStream+</span>
+    </a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="#downloads">Download</a>
+      <a href="https://github.com/BR3XALITYalt/RadioStreamPlus">Source</a>
+      <a href="https://github.com/BR3XALITYalt/RadioStreamPlus/tree/main/wiki">Documentation</a>
+      <a href="https://github.com/BR3XALITYalt/RadioStreamPlus/issues">Issues</a>
+    </nav>
+  </header>
+
+  <main id="top" class="wrap">
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">Open source radio tools</p>
+      <h1 id="page-title">RadioStream+</h1>
+      <p class="lead">Find public KiwiSDR and OpenWebRX receivers, tune in, save frequencies, and keep receiver information in an OBS overlay.</p>
+      <a class="primary-link" href="#downloads">Download RadioStream+</a>
+      <p class="hero-note">Runs locally on your computer. Choose Python or the Windows executable.</p>
+    </section>
+
+    <section class="features" aria-label="What RadioStream+ does">
+      <div>
+        <h2>Find receivers</h2>
+        <p>Browse receiver locations and filter by distance and frequency coverage.</p>
+      </div>
+      <div>
+        <h2>Save frequencies</h2>
+        <p>Keep named presets for the signals and modes you monitor.</p>
+      </div>
+      <div>
+        <h2>Use it with OBS</h2>
+        <p>Add a transparent overlay with receiver and propagation information.</p>
+      </div>
+    </section>
+
+    <section class="downloads" id="downloads" aria-labelledby="downloads-title">
+      <div class="section-heading">
+        <p class="eyebrow">Get the application</p>
+        <h2 id="downloads-title">Choose your download</h2>
+        <p>Both downloads use the current continuous release. The Python version runs from source; the Windows build includes its own Python runtime.</p>
+      </div>
+
+      <div class="download-grid">
+        <article class="download-card">
+          <p class="eyebrow">Run from source</p>
+          <h3>Cross Platform (Python)</h3>
+          <p>For Windows, macOS, and Linux. Download the source archive, extract it, then start RadioStream+ from a terminal.</p>
+          <p class="platforms">Python 3.10 or newer</p>
+          <ul class="requirements">
+            <li>No bundled runtime or installer</li>
+            <li>Use <code>py radiostream.py</code> on Windows</li>
+            <li>Use <code>python3 radiostream.py</code> on macOS and Linux</li>
+          </ul>
+          <a class="primary-link" href="https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus-prerelease.zip">Download source ZIP</a>
+          <div class="card-links">
+            <a href="https://github.com/BR3XALITYalt/RadioStreamPlus">Browse source</a>
+            <a href="https://github.com/BR3XALITYalt/RadioStreamPlus/tree/main/wiki/getting-started.md">Setup guide</a>
+          </div>
+        </article>
+
+        <article class="download-card">
+          <p class="eyebrow">Windows x64</p>
+          <h3>Windows (EXE)</h3>
+          <p>A single executable with Python included. It downloads the latest application source on launch and keeps a local cache for later offline starts.</p>
+          <p class="platforms">Windows 10 or newer · 64-bit</p>
+          <ul class="requirements">
+            <li>No separate Python installation</li>
+            <li>Internet access is needed for the first source download</li>
+            <li>Settings and presets are stored separately from the executable</li>
+          </ul>
+          <a class="primary-link" href="https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus.exe">Download RadioStreamPlus.exe</a>
+          <div class="card-links">
+            <a href="https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease/main/RadioStreamPlus-Windows.zip">Download ZIP instead</a>
+            <a href="https://github.com/BR3XALITYalt/RadioStreamPlus/releases/tag/continuous">Release notes</a>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>RadioStream+ · <a href="https://github.com/BR3XALITYalt/RadioStreamPlus">GitHub</a> · Licensed under GPL-3.0-only. See the repository for third-party notices.</p>
+    </div>
+  </footer>
+</body>
+</html>
