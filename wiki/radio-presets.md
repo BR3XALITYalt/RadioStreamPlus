@@ -27,7 +27,7 @@ The preset does not store the map center, search radius, KiwiSDR zoom, receiver 
 
 Choose the preset in **Saved presets** and select **Load preset**. RadioStream+ applies its frequency, mode, and passband, saves the updated radio settings, and refreshes the receiver search results.
 
-The preset stores one frequency. Loading it changes the currently active frequency link and leaves the other links unchanged. The frequency value is stored internally in kHz.
+The preset stores one frequency. Loading it replaces the frequency list with that single frequency, stopping frequency shuffling until more frequencies are added. The frequency value is stored internally in kHz.
 
 ## Update a preset
 
