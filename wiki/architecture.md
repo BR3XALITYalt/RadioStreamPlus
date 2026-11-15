@@ -8,7 +8,7 @@ RadioStream+ supplies the receiver side of a radio livestream production setup. 
 
 | File | Responsibility |
 |---|---|
-| `radiostream_bootstrap.py` | Windows executable bootstrap, source cache, and offline fallback |\n| `radiostream.py` | Python launcher and application updater |
+
 | `radiostream_server.py` | Local HTTP server, API routes, current receiver, and rotation |
 | `radiostream_core.py` | Settings validation, receiver directory handling, map filtering, frequency parsing, and local data files |
 | `manage.html` | Management interface, map, source controls, and radio presets |
@@ -16,7 +16,7 @@ RadioStream+ supplies the receiver side of a radio livestream production setup. 
 | `index.html` | Transparent OBS information overlay |
 | `app.js` | Overlay client-side behavior |
 | `maintenance.js` and `m.html` | Update maintenance screen and page handling |
-| `tests/test_radiostream.py` | Application tests |\n| `tests/test_bootstrap.py` | Source archive and cache tests |
+| `tests/test_radiostream.py` | Application tests |\n
 
 ## Request flow
 
