@@ -125,15 +125,14 @@ def set_station_preference(station_id: str, preference: str) -> str | None:
         station_preferences = updated
     return None if preference == "none" else preference
 
-MAX_FREQUENCY_LINKS = 32
+MAX_FREQUENCIES = 32
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "center_lat": 20.0,
     "center_lon": 0.0,
     "radius_km": 500,
     "frequency_khz": 4625.0,
-    "frequency_links": [{"name": "Primary", "frequency_khz": 4625.0}],
-    "active_frequency_index": 0,
+    "frequencies_khz": [4625.0],
     "mode": "usb",
     "zoom": 11,
     "volume": 180,
@@ -327,14 +326,18 @@ def load_config() -> None:
                     "should start building up again."
                 )
                 needs_save = False
-                if "frequency_links" not in parsed:
-                    parsed["frequency_links"] = [{
-                        "name": "Primary",
-                        "frequency_khz": parsed.get("frequency_khz", DEFAULT_CONFIG["frequency_khz"]),
-                    }]
-                    needs_save = True
-                if "active_frequency_index" not in parsed:
-                    parsed["active_frequency_index"] = 0
+                if "frequencies_khz" not in parsed:
+                    legacy_links = parsed.get("frequency_links")
+                    if isinstance(legacy_links, list) and legacy_links:
+                        parsed["frequencies_khz"] = [
+                            item.get("frequency_khz")
+                            for item in legacy_links
+                            if isinstance(item, dict)
+                        ]
+                    else:
+                        parsed["frequencies_khz"] = [
+                            parsed.get("frequency_khz", DEFAULT_CONFIG["frequency_khz"])
+                        ]
                     needs_save = True
                 if parsed.get("overlay_reload_notice") == previous_default_reload_notice:
                     parsed["overlay_reload_notice"] = DEFAULT_CONFIG["overlay_reload_notice"]
@@ -346,8 +349,7 @@ def load_config() -> None:
                     "overlay_black_notice",
                     "openwebrx_receiverbook_enabled",
                     "openwebrx_custom_enabled",
-                    "frequency_links",
-                    "active_frequency_index",
+                    "frequencies_khz",
                 }
                 if not new_config_keys.issubset(parsed):
                     needs_save = True
@@ -386,59 +388,50 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
     if not isinstance(custom_enabled, bool):
         raise ValueError("Custom OpenWebRX source setting must be true or false")
 
-    raw_links = raw.get("frequency_links") if "frequency_links" in raw else base.get("frequency_links")
-    if "frequency_links" not in raw and "frequency_khz" in raw:
-        existing_links = raw_links if isinstance(raw_links, list) and raw_links else [
-            {"name": "Primary", "frequency_khz": base.get("frequency_khz")}
-        ]
-        raw_links = [dict(item) for item in existing_links if isinstance(item, dict)]
-        if not raw_links:
-            raw_links = [{"name": "Primary", "frequency_khz": base.get("frequency_khz")}]
-        active_for_update = clamp_number(
-            raw.get("active_frequency_index", base.get("active_frequency_index", 0)),
-            "Active frequency link",
-            0,
-            len(raw_links) - 1,
-            integer=True,
+    if "frequencies_khz" in raw:
+        raw_frequencies = raw["frequencies_khz"]
+    elif "frequency_links" in raw:
+        legacy_links = raw["frequency_links"]
+        raw_frequencies = [
+            item.get("frequency_khz")
+            for item in legacy_links
+            if isinstance(item, dict)
+        ] if isinstance(legacy_links, list) else []
+    elif "frequency_khz" in raw:
+        raw_frequencies = [raw["frequency_khz"]]
+    else:
+        raw_frequencies = base.get("frequencies_khz", [base.get("frequency_khz")])
+
+    if not isinstance(raw_frequencies, list) or not 1 <= len(raw_frequencies) <= MAX_FREQUENCIES:
+        raise ValueError(f"Add between 1 and {MAX_FREQUENCIES} frequencies")
+
+    frequencies_khz: list[float] = []
+    for index, value in enumerate(raw_frequencies):
+        frequency = clamp_number(
+            value,
+            f"Frequency {index + 1} (kHz)",
+            0.001,
+            300000000,
         )
-        raw_links[active_for_update]["frequency_khz"] = raw["frequency_khz"]
+        if frequency in frequencies_khz:
+            raise ValueError("Each frequency must be unique")
+        frequencies_khz.append(frequency)
 
-    if not isinstance(raw_links, list) or not 1 <= len(raw_links) <= MAX_FREQUENCY_LINKS:
-        raise ValueError(f"Add between 1 and {MAX_FREQUENCY_LINKS} frequency links")
-
-    frequency_links: list[dict[str, Any]] = []
-    for index, item in enumerate(raw_links):
-        if not isinstance(item, dict):
-            raise ValueError(f"Frequency link {index + 1} must be an object")
-        name = str(item.get("name") or f"Link {index + 1}").strip()
-        if not name:
-            name = f"Link {index + 1}"
-        if len(name) > 80:
-            raise ValueError("Frequency link names must be 80 characters or fewer")
-        frequency_links.append({
-            "name": name,
-            "frequency_khz": clamp_number(
-                item.get("frequency_khz"),
-                f"Frequency link {index + 1} (kHz)",
-                0.001,
-                300000000,
-            ),
-        })
-
-    active_frequency_index = clamp_number(
-        base.get("active_frequency_index", 0),
-        "Active frequency link",
-        0,
-        len(frequency_links) - 1,
-        integer=True,
+    current_frequency_khz = clamp_number(
+        base.get("frequency_khz", frequencies_khz[0]),
+        "Current frequency (kHz)",
+        0.001,
+        300000000,
     )
+    if current_frequency_khz not in frequencies_khz:
+        current_frequency_khz = frequencies_khz[0]
+
     result = {
         "center_lat": clamp_number(base["center_lat"], "Latitude", -90, 90),
         "center_lon": clamp_number(base["center_lon"], "Longitude", -180, 180),
         "radius_km": clamp_number(base["radius_km"], "Range", 1, 20000),
-        "frequency_khz": frequency_links[active_frequency_index]["frequency_khz"],
-        "frequency_links": frequency_links,
-        "active_frequency_index": active_frequency_index,
+        "frequency_khz": current_frequency_khz,
+        "frequencies_khz": frequencies_khz,
         "mode": str(base["mode"]).lower(),
         "zoom": clamp_number(base["zoom"], "KiwiSDR zoom", 0, 14, integer=True),
         "volume": clamp_number(base["volume"], "Volume", 0, 200, integer=True),
