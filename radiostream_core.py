@@ -322,8 +322,13 @@ def load_config() -> None:
                     needs_save = True
 
                 config = validate_config(parsed, allow_partial=True)
-                new_overlay_keys = {"overlay_reload_notice", "overlay_black_notice"}
-                if not new_overlay_keys.issubset(parsed):
+                new_config_keys = {
+                    "overlay_reload_notice",
+                    "overlay_black_notice",
+                    "openwebrx_receiverbook_enabled",
+                    "openwebrx_custom_enabled",
+                }
+                if not new_config_keys.issubset(parsed):
                     needs_save = True
                 if needs_save:
                     save_config()
