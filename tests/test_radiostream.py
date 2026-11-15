@@ -201,6 +201,19 @@ class RadioStreamTests(unittest.TestCase):
             "https://sdr.example.test/radio/",
         )
 
+    def test_openwebrx_tuning_url_uses_hz_and_supported_mode_names(self):
+        receiver = {"url": "https://sdr.example.test/radio/"}
+        url = rs.make_openwebrx_url(receiver, self.cfg)
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.scheme, "https")
+        self.assertEqual(parsed.netloc, "sdr.example.test")
+        self.assertEqual(parsed.path, "/radio/")
+        self.assertEqual(parsed.fragment, "freq=4625000,mod=usb")
+
+        fm_cfg = dict(self.cfg, mode="nbfm")
+        fm_url = rs.make_openwebrx_url(receiver, fm_cfg)
+        self.assertEqual(urlsplit(fm_url).fragment, "freq=4625000,mod=nfm")
+
     def test_discover_openwebrx_uses_saved_search_radius(self):
         previous = (
             rs.receiverbook_data,
@@ -237,6 +250,7 @@ class RadioStreamTests(unittest.TestCase):
         self.assertEqual(found[0]["name"], "Nearby OpenWebRX")
         self.assertEqual(found[0]["source"], "Receiverbook")
         self.assertTrue(found[0]["listed_online"])
+        self.assertEqual(urlsplit(found[0]["tune_url"]).fragment, "freq=4625000,mod=usb")
         self.assertEqual(meta["found_count"], 1)
 
     def test_directory_schema_validation(self):

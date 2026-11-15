@@ -603,6 +603,19 @@ def fetch_receiverbook_directory(force: bool = False) -> list[dict[str, Any]]:
             raise RuntimeError(f"Could not download the Receiverbook OpenWebRX directory: {exc}") from exc
 
 
+def make_openwebrx_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
+    base_url = normalize_receiverbook_url(receiver.get("url"))
+    if not base_url:
+        raise ValueError("OpenWebRX receiver URL is invalid")
+    parsed = urllib.parse.urlsplit(base_url)
+    frequency_hz = round(float(cfg["frequency_khz"]) * 1000)
+    mode = {"nbfm": "nfm"}.get(str(cfg["mode"]).lower(), str(cfg["mode"]).lower())
+    fragment = f"freq={frequency_hz},mod={mode}"
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, parsed.query, fragment)
+    )
+
+
 def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     try:
         records = fetch_receiverbook_directory(force=force)
@@ -626,6 +639,7 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
             "distance_km": round(distance, 1),
             "source": "Receiverbook",
             "listed_online": True,
+            "tune_url": make_openwebrx_url(item, cfg),
         })
     found.sort(key=lambda item: (item["distance_km"], item["name"].casefold()))
     meta = {
