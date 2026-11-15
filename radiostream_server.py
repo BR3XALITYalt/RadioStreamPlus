@@ -578,15 +578,16 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
         try:
             data = read_json_body(self)
             if route == "/api/config":
-                with core.CONFIG_LOCK:
-                    core.config = core.validate_config(data)
-                    core.save_config()
-                reset_frequency_shuffle()
-                with STATE_LOCK:
-                    current_receiver = None
-                    current_started_at = 0.0
-                    last_receiver_ids = []
-                    last_receiver_error = None
+                with STATE_REFRESH_LOCK:
+                    with core.CONFIG_LOCK:
+                        core.config = core.validate_config(data)
+                        core.save_config()
+                    reset_frequency_shuffle()
+                    with STATE_LOCK:
+                        current_receiver = None
+                        current_started_at = 0.0
+                        last_receiver_ids = []
+                        last_receiver_error = None
                 self.send_json({"ok": True, "config": dict(core.config)})
 
             elif route == "/api/openwebrx/custom":
