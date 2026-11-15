@@ -593,7 +593,13 @@ class RadioStreamTests(unittest.TestCase):
             self.assertEqual(loaded["frequencies_khz"], [4625])
             self.assertEqual(loaded["rotation_minutes"], rs.DEFAULT_CONFIG["rotation_minutes"])
             migrated = json.loads(rs.RADIO_PRESETS_PATH.read_text(encoding="utf-8"))
-            self.assertEqual(migrated["schema"], 2)
+            self.assertEqual(migrated["schema"], 3)
+
+            migrated["schema"] = 2
+            rs.RADIO_PRESETS_PATH.write_text(json.dumps(migrated), encoding="utf-8")
+            rs.load_radio_presets()
+            migrated_again = json.loads(rs.RADIO_PRESETS_PATH.read_text(encoding="utf-8"))
+            self.assertEqual(migrated_again["schema"], 3)
 
     def test_radio_presets_xml_export_import_preserves_multiple_frequencies(self):
         previous_path = rs.RADIO_PRESETS_PATH
@@ -783,7 +789,7 @@ class RadioStreamTests(unittest.TestCase):
             saved_receivers = json.loads(rs.OPENWEBRX_CUSTOM_PATH.read_text(encoding="utf-8"))
             saved_preferences = json.loads(rs.STATION_PREFERENCES_PATH.read_text(encoding="utf-8"))
             self.assertEqual(saved_config["radius_km"], 1250)
-            self.assertEqual(saved_presets["schema"], 2)
+            self.assertEqual(saved_presets["schema"], 3)
             self.assertEqual(saved_receivers["schema"], 1)
             self.assertEqual(saved_preferences["stations"]["kiwi:blocked"], "block")
 
