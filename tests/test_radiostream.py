@@ -390,6 +390,72 @@ class RadioStreamTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rs.validate_config({"openwebrx_custom_enabled": "false"})
 
+    def test_radio_preset_validation(self):
+        preset = rs.normalize_radio_preset({
+            "name": "WWV 10 MHz",
+            "frequency_khz": 10000,
+            "mode": "am",
+            "passband_low": -4900,
+            "passband_high": 4900,
+        })
+        self.assertEqual(preset["name"], "WWV 10 MHz")
+        self.assertEqual(preset["frequency_khz"], 10000)
+        self.assertEqual(preset["mode"], "am")
+        self.assertTrue(preset["id"].startswith("preset-"))
+        with self.assertRaises(ValueError):
+            rs.normalize_radio_preset({
+                "name": "Bad mode",
+                "frequency_khz": 10000,
+                "mode": "unsupported",
+                "passband_low": -100,
+                "passband_high": 100,
+            })
+        with self.assertRaises(ValueError):
+            rs.normalize_radio_preset({
+                "name": "Bad range",
+                "frequency_khz": 0,
+                "mode": "am",
+                "passband_low": -100,
+                "passband_high": 100,
+            })
+
+    def test_radio_presets_persist_update_and_delete(self):
+        previous_path = rs.RADIO_PRESETS_PATH
+        previous_presets = rs.radio_presets
+        self.addCleanup(lambda: (
+            setattr(rs, "RADIO_PRESETS_PATH", previous_path),
+            setattr(rs, "radio_presets", previous_presets),
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            rs.RADIO_PRESETS_PATH = Path(directory) / "radio_presets.json"
+            rs.radio_presets = []
+            original = {
+                "name": "The Pip",
+                "frequency_khz": 3750,
+                "mode": "usb",
+                "passband_low": 300,
+                "passband_high": 2700,
+            }
+            saved = rs.save_radio_preset(original)
+            self.assertEqual(len(saved), 1)
+            first_id = saved[0]["id"]
+
+            updated = rs.save_radio_preset({
+                **original,
+                "frequency_khz": 4000,
+            })
+            self.assertEqual(len(updated), 1)
+            self.assertEqual(updated[0]["id"], first_id)
+            self.assertEqual(updated[0]["frequency_khz"], 4000)
+
+            rs.radio_presets = []
+            rs.load_radio_presets()
+            self.assertEqual(rs.get_radio_presets()[0]["name"], "The Pip")
+            self.assertEqual(rs.get_radio_presets()[0]["frequency_khz"], 4000)
+
+            removed = rs.remove_radio_preset(first_id)
+            self.assertEqual(removed, [])
+
     def test_directory_schema_validation(self):
         good = {"schema": 1, "receivers": [self.sample()]}
         self.assertEqual(len(rs.validate_directory(good)), 1)
