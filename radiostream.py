@@ -50,7 +50,8 @@ PYTHON_FILES = {"radiostream_core.py", "radiostream_server.py"}
 
 LAUNCHER_PATH = Path(__file__).resolve()
 APP_DIR = LAUNCHER_PATH.parent
-UPDATE_STATE_PATH = APP_DIR / ".radiostream-update.json"
+DATA_DIR = server.core.DATA_DIR
+UPDATE_STATE_PATH = DATA_DIR / ".radiostream-update.json"
 STOP_EVENT = threading.Event()
 RESTART_EVENT = threading.Event()
 UPDATE_LOCK = threading.Lock()
@@ -108,7 +109,7 @@ def write_update_state(commit_sha: str) -> None:
     fd, temporary_name = tempfile.mkstemp(
         prefix=".radiostream-update-",
         suffix=".tmp",
-        dir=APP_DIR,
+        dir=DATA_DIR,
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
