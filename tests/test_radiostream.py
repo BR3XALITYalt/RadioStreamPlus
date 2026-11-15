@@ -459,12 +459,12 @@ class RadioStreamTests(unittest.TestCase):
         rs.receiverbook_error = None
         matching_profile = {
             "sdr_name": "RSPdx",
-            "profile_name": "40m",
-            "profile_label": "RSPdx 40m",
-            "center_hz": 7000000,
-            "sample_rate_hz": 2000000,
-            "low_hz": 6000000,
-            "high_hz": 8000000,
+            "profile_name": "80m",
+            "profile_label": "RSPdx 80m",
+            "center_hz": 4625000,
+            "sample_rate_hz": 1000000,
+            "low_hz": 4125000,
+            "high_hz": 5125000,
         }
         with (
             patch.object(rs, "save_receiverbook_cache"),
@@ -478,7 +478,7 @@ class RadioStreamTests(unittest.TestCase):
         self.assertEqual(found[0]["matching_profiles"], [matching_profile])
         launch_query = parse_qs(urlsplit(found[0]["tune_url"]).query)
         self.assertEqual(urlsplit(found[0]["tune_url"]).path, "/openwebrx-launch.html")
-        self.assertEqual(json.loads(launch_query["profiles"][0]), ["RSPdx 40m"])
+        self.assertEqual(json.loads(launch_query["profiles"][0]), ["RSPdx 80m"])
         self.assertEqual(meta["nearby_count"], 2)
         self.assertEqual(meta["found_count"], 1)
 
