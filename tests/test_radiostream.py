@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -337,7 +338,7 @@ class RadioStreamTests(unittest.TestCase):
             setattr(rs, "openwebrx_custom_data", previous_data),
         ))
         with tempfile.TemporaryDirectory() as directory:
-            rs.OPENWEBRX_CUSTOM_PATH = rs.Path(directory) / "openwebrx_custom.json"
+            rs.OPENWEBRX_CUSTOM_PATH = Path(directory) / "openwebrx_custom.json"
             rs.openwebrx_custom_data = []
             instance = {
                 "url": "https://sdr.example.test/",
@@ -386,6 +387,8 @@ class RadioStreamTests(unittest.TestCase):
     def test_receiverbook_source_setting_requires_boolean(self):
         with self.assertRaises(ValueError):
             rs.validate_config({"openwebrx_receiverbook_enabled": "false"})
+        with self.assertRaises(ValueError):
+            rs.validate_config({"openwebrx_custom_enabled": "false"})
 
     def test_directory_schema_validation(self):
         good = {"schema": 1, "receivers": [self.sample()]}
