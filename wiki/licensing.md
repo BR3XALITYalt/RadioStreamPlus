@@ -4,7 +4,7 @@
 
 ## Main project
 
-The original RadioStream+ software maintained by BR3XALITY is licensed under the **GNU General Public License version 3 only** (`GPL-3.0-only`). The complete license text is in the repository's [LICENSE](../LICENSE) file.
+RadioStream+ is licensed under the **GNU General Public License version 3 only** (`GPL-3.0-only`). The complete text is available in [LICENSE](../LICENSE).
 
 The GPL-3.0-only license permits use, modification, redistribution, and commercial distribution, subject to its source and licensing requirements when conveying covered works.
 
@@ -16,6 +16,3 @@ The UVB-76 information overlay artwork and original information-panel material w
 
 The project notices document the relationship to Kiwi-Reload, AetherSDR's public KiwiSDR directory, Receiverbook, Leaflet, and OpenStreetMap. See [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) for the detailed notices and links.
 
-## License changes
-
-A license change applies to the versions and files identified by the project maintainers. It does not retroactively revoke permissions already granted for previously published versions.
