@@ -1,6 +1,6 @@
 # RadioStream+ Wiki
 
-The repository's documentation hub for RadioStream+. This is a **wiki-style section stored in the `/wiki` folder**, so its pages are versioned with the source code and can be reviewed like any other project file.
+Find instructions for installing and using RadioStream+, along with reference material for its settings, receiver sources, and local services.
 
 RadioStream+ is a local radio receiver manager and OBS information overlay. Use it to find public KiwiSDR and OpenWebRX receivers, tune to a frequency, save radio presets, and display receiver and propagation information in OBS.
 
@@ -40,10 +40,6 @@ RadioStream+ is a local radio receiver manager and OBS information overlay. Use 
 - [Issue tracker](https://github.com/BR3XALITYalt/RadioStreamPlus/issues)
 - [License](../LICENSE)
 - [Third-party notices](../THIRD_PARTY_NOTICES.md)
-
-## Page conventions
-
-Pages use relative links so the documentation works directly in GitHub's file viewer. The index is named `main.md` intentionally. New documentation should be added here and linked from the most relevant existing pages.
 
 ---
 
