@@ -32,6 +32,6 @@ OpenWebRX links are generated from the selected frequency and mode and open dire
 
 ## Local state
 
-General configuration, station preferences, custom OpenWebRX entries, radio presets, and directory caches are stored in separate files. This keeps the updater's application files separate from user data.
+General settings, station preferences, custom OpenWebRX entries, radio presets, and directory caches are each stored in separate local files.
 
 See [Configuration](configuration.md) for the complete data-file list.
