@@ -539,6 +539,12 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             self.send_json({"instances": core.get_custom_openwebrx_instances()})
         elif route == "/api/presets":
             self.send_json({"presets": core.get_radio_presets()})
+        elif route == "/api/presets/export":
+            self.send_bytes(
+                core.export_radio_presets_xml(),
+                "application/xml; charset=utf-8",
+                headers={"Content-Disposition": 'attachment; filename="radiostream-presets.xml"'},
+            )
         elif route == "/api/solar":
             body, error_text, cache_status = fetch_solar_xml()
             if body is not None:
@@ -576,6 +582,20 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             return
         route = urllib.parse.urlsplit(self.path).path
         try:
+            if route == "/api/presets/import":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 512 * 1024:
+                    raise ValueError("XML request is empty or exceeds the 512 KB limit")
+                xml_text = self.rfile.read(length).decode("utf-8-sig")
+                result = core.import_radio_presets_xml(xml_text)
+                self.send_json({
+                    "ok": True,
+                    "presets": result["presets"],
+                    "added": result["added"],
+                    "updated": result["updated"],
+                })
+                return
+
             data = read_json_body(self)
             if route == "/api/config":
                 with STATE_REFRESH_LOCK:
