@@ -414,11 +414,13 @@ function readSettings() {
   if (new Set(frequencies).size !== frequencies.length) {
     throw new Error("Each frequency must be unique.");
   }
+  const savedFrequency=Number(currentConfig?.frequency_khz);
+  const currentFrequency=frequencies.includes(savedFrequency) ? savedFrequency : frequencies[0];
   return {
     center_lat:center.lat,
     center_lon:center.lon,
     radius_km:Number($("radius").value),
-    frequency_khz:frequencies[0],
+    frequency_khz:currentFrequency,
     frequencies_khz:frequencies,
     mode:$("mode").value,
     zoom:Number($("zoom").value),
