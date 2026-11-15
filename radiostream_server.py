@@ -27,10 +27,10 @@ current_receiver: dict[str, Any] | None = None
 current_started_at = 0.0
 last_receiver_ids: list[str] = []
 last_receiver_error: str | None = None
-SOLAR_CACHE_PATH = APP_DIR / "solar_xml_cache.xml"
+SOLAR_CACHE_PATH = core.DATA_DIR / "solar_xml_cache.xml"
 SOLAR_CACHE_MAX_AGE = 14 * 24 * 60 * 60
 SOLAR_REFRESH_INTERVAL_SECONDS = 60 * 60
-SOLAR_LAST_ATTEMPT_PATH = APP_DIR / ".solar_last_attempt"
+SOLAR_LAST_ATTEMPT_PATH = core.DATA_DIR / ".solar_last_attempt"
 SOLAR_FETCH_LOCK = threading.Lock()
 SOLAR_LAST_ATTEMPT = 0.0
 
