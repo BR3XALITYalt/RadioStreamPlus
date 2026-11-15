@@ -460,6 +460,8 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             })
         elif route == "/api/openwebrx/custom":
             self.send_json({"instances": core.get_custom_openwebrx_instances()})
+        elif route == "/api/presets":
+            self.send_json({"presets": core.get_radio_presets()})
         elif route == "/api/solar":
             body, error_text, cache_status = fetch_solar_xml()
             if body is not None:
@@ -516,6 +518,14 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             elif route == "/api/openwebrx/custom/delete":
                 instances = core.remove_custom_openwebrx_instance(data.get("id"))
                 self.send_json({"ok": True, "instances": instances})
+
+            elif route == "/api/presets":
+                presets = core.save_radio_preset(data)
+                self.send_json({"ok": True, "presets": presets})
+
+            elif route == "/api/presets/delete":
+                presets = core.remove_radio_preset(data.get("id"))
+                self.send_json({"ok": True, "presets": presets})
 
             elif route == "/api/preference":
                 wanted_id = str(data.get("id", ""))
@@ -602,6 +612,7 @@ def main(
     core.load_disk_directory()
     core.load_disk_receiverbook_directory()
     core.load_custom_openwebrx_instances()
+    core.load_radio_presets()
     http_server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
     http_server.daemon_threads = True
     
