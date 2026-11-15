@@ -31,6 +31,9 @@ button.primary:hover { background:#216fbd; }
 button:disabled { cursor:wait; opacity:.55; }
 .field-grid { display:grid; grid-template-columns:1fr 1fr; gap:13px 14px; }
 .field { min-width:0; display:flex; flex-direction:column; gap:6px; }
+.frequency-control { display:grid; grid-template-columns:minmax(0,1fr) 68px; gap:5px; }
+.frequency-control input { min-width:0; }
+.frequency-control select { width:68px; min-width:68px; padding-left:7px; padding-right:17px; text-align:center; }
 .field.wide { grid-column:1 / -1; }
 label { color:#bdc6cc; font-size:12px; }
 input, select, textarea { width:100%; min-height:36px; padding:7px 9px; border:1px solid #424c54; border-radius:4px; background:#101518; color:#f2f4f5; }\ntextarea { min-height:112px; resize:vertical; line-height:1.4; }
@@ -110,7 +113,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
         <div class="panel-body">
           <div class="field-grid">
             <div class="field"><label for="radius">Search range (km)</label><input id="radius" type="number" min="1" max="20000" step="1"></div>
-            <div class="field"><label for="frequency">Frequency (kHz)</label><input id="frequency" type="number" min="10" max="30000" step="0.01"></div>
+            <div class="field"><label for="frequency">Frequency</label><div class="frequency-control"><input id="frequency" type="number" min="1" max="300000000000" step="any"><select id="frequency-unit" aria-label="Frequency unit"><option value="Hz">Hz</option><option value="kHz" selected>kHz</option><option value="MHz">MHz</option><option value="GHz">GHz</option></select></div></div>
             <div class="field"><label for="mode">Demodulation mode</label><select id="mode"><option value="usb">USB</option><option value="lsb">LSB</option><option value="am">AM</option><option value="cw">CW</option><option value="nbfm">NBFM</option></select></div>
             <div class="field"><label for="zoom">KiwiSDR zoom (all receivers)</label><input id="zoom" type="number" min="0" max="14" step="1"></div>
             <div class="field"><label for="rotation">Rotate receiver after (minutes)</label><input id="rotation" type="number" min="3" max="60" step="1"></div>
@@ -144,6 +147,21 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
+const FREQUENCY_UNITS = Object.freeze({Hz:1, kHz:1e3, MHz:1e6, GHz:1e9});
+const FREQUENCY_MAX_HZ = 300e9;
+let displayedFrequencyUnit = "kHz";
+function updateFrequencyLimits() {
+  const factor = FREQUENCY_UNITS[$("frequency-unit").value];
+  $("frequency").min = String(1 / factor);
+  $("frequency").max = String(FREQUENCY_MAX_HZ / factor);
+}
+$("frequency-unit").addEventListener("change", () => {
+  const valueHz = Number($("frequency").value) * FREQUENCY_UNITS[displayedFrequencyUnit];
+  displayedFrequencyUnit = $("frequency-unit").value;
+  if (Number.isFinite(valueHz)) $("frequency").value = String(valueHz / FREQUENCY_UNITS[displayedFrequencyUnit]);
+  updateFrequencyLimits();
+});
+updateFrequencyLimits();
 const map = L.map("map", {worldCopyJump:true}).setView([20, 0], 2);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom:19,
@@ -222,7 +240,7 @@ function readSettings() {
     center_lat:center.lat,
     center_lon:center.lon,
     radius_km:Number($("radius").value),
-    frequency_khz:Number($("frequency").value),
+    frequency_khz:Number($("frequency").value) * FREQUENCY_UNITS[$("frequency-unit").value] / 1000,
     mode:$("mode").value,
     zoom:Number($("zoom").value),
     rotation_minutes:Number($("rotation").value),
@@ -238,7 +256,10 @@ function fillSettings(cfg) {
   setCenter(cfg.center_lat,cfg.center_lon,true);
   map.setView([cfg.center_lat,cfg.center_lon], cfg.radius_km >= 2000 ? 2 : cfg.radius_km >= 500 ? 4 : cfg.radius_km >= 100 ? 6 : 8);
   $("radius").value=cfg.radius_km;
+  $("frequency-unit").value="kHz";
+  displayedFrequencyUnit="kHz";
   $("frequency").value=cfg.frequency_khz;
+  updateFrequencyLimits();
   $("mode").value=cfg.mode;
   $("zoom").value=cfg.zoom;
   $("rotation").value=cfg.rotation_minutes;
@@ -346,7 +367,7 @@ function renderReceivers(receivers, openwebrx) {
   if(!openwebrx.length) {
     const empty=document.createElement("p");
     empty.className="hint";
-    empty.textContent="No OpenWebRX receivers found in this area.";
+    empty.textContent="No OpenWebRX receivers in this area support the selected frequency.";
     openList.append(empty);
   }
   for(const item of openwebrx) {
@@ -383,7 +404,7 @@ async function discover() {
     const data=await api("/api/discover");
     renderReceivers(data.receivers, data.openwebrx || []);
     const openMeta=data.openwebrx_meta || {};
-    $("result-line").textContent=`Found ${data.meta.found_count} KiwiSDR receivers and ${openMeta.found_count || 0} OpenWebRX instances in range; ${data.meta.available_count} KiwiSDR available and ${data.meta.blocked_count || 0} blocked at ${$("frequency").value} kHz.`;
+    $("result-line").textContent=`Found ${data.meta.found_count} KiwiSDR receivers and ${openMeta.found_count || 0} OpenWebRX instances in range; ${data.meta.available_count} KiwiSDR available and ${data.meta.blocked_count || 0} blocked at ${$("frequency").value} ${$("frequency-unit").value}.`;
     const state=await api("/api/state"); showCurrent(state);
   } catch(error) {
     $("result-line").textContent=error.message;
