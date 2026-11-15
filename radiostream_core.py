@@ -576,7 +576,7 @@ def validate_radio_presets(payload: Any) -> list[dict[str, Any]]:
     if (
         not isinstance(payload, dict)
         or type(payload.get("schema")) is not int
-        or payload.get("schema") not in {1, 2}
+        or payload.get("schema") not in {1, 2, RADIO_PRESETS_SCHEMA_VERSION}
     ):
         raise ValueError("Radio preset file has an unsupported schema")
     entries = payload.get("presets")
@@ -597,7 +597,7 @@ def validate_radio_presets(payload: Any) -> list[dict[str, Any]]:
 
 
 def _write_radio_presets(presets: list[dict[str, Any]]) -> None:
-    payload = json.dumps({"schema": 2, "presets": presets}, ensure_ascii=False, indent=2) + "\n"
+    payload = json.dumps({"schema": RADIO_PRESETS_SCHEMA_VERSION, "presets": presets}, ensure_ascii=False, indent=2) + "\n"
     try:
         temporary = RADIO_PRESETS_PATH.with_suffix(".json.tmp")
         temporary.write_text(payload, encoding="utf-8")
@@ -623,7 +623,7 @@ def load_radio_presets() -> None:
         print(f"[presets] Ignoring invalid preset file: {exc}", file=sys.stderr)
         return
 
-    if payload.get("schema") == 1:
+    if payload.get("schema") in {1, 2}:
         try:
             _write_radio_presets(cleaned)
             print("[presets] Migrated saved presets to schema 2.")
@@ -664,6 +664,7 @@ def save_radio_preset(raw: Any) -> list[dict[str, Any]]:
         return [dict(item) for item in updated]
 
 
+RADIO_PRESETS_SCHEMA_VERSION = 3
 RADIO_PRESET_XML_VERSION = 2
 FULL_BACKUP_XML_VERSION = 2
 
@@ -983,7 +984,7 @@ def import_all_data_xml(xml_text: str) -> dict[str, int]:
 
     if not isinstance(raw_presets, list):
         raise ValueError("Backup presets must be a list")
-    cleaned_presets = validate_radio_presets({"schema": 2, "presets": raw_presets})
+    cleaned_presets = validate_radio_presets({"schema": RADIO_PRESETS_SCHEMA_VERSION, "presets": raw_presets})
     if len(cleaned_presets) != len(raw_presets):
         raise ValueError("Backup contains invalid or duplicate presets")
 
@@ -1010,7 +1011,7 @@ def import_all_data_xml(xml_text: str) -> dict[str, int]:
     files = {
         CONFIG_PATH: (json.dumps(cleaned_config, indent=2) + "\n").encode("utf-8"),
         RADIO_PRESETS_PATH: (
-            json.dumps({"schema": 2, "presets": cleaned_presets}, ensure_ascii=False, indent=2) + "\n"
+            json.dumps({"schema": RADIO_PRESETS_SCHEMA_VERSION, "presets": cleaned_presets}, ensure_ascii=False, indent=2) + "\n"
         ).encode("utf-8"),
         OPENWEBRX_CUSTOM_PATH: (
             json.dumps({"schema": 1, "instances": cleaned_custom}, ensure_ascii=False, indent=2) + "\n"
