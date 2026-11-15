@@ -1,0 +1,73 @@
+name: Continuous pre-release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: continuous-prerelease
+  cancel-in-progress: true
+
+jobs:
+  update-prerelease:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out latest commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package source
+        run: |
+          git archive --format=zip --prefix=RadioStreamPlus/ "$GITHUB_SHA" > RadioStreamPlus-prerelease.zip
+
+      - name: Move continuous tag to this commit
+        run: |
+          git tag -f continuous "$GITHUB_SHA"
+          git push origin refs/tags/continuous --force
+
+      - name: Create or update pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Continuous pre-release
+
+          This pre-release is updated automatically whenever a commit is pushed to `main`.
+
+          You probably do not need to install this pre-release if RadioStream+ is already updating normally. Use it for a manual or offline installation, or when the automatic updater is unavailable or has failed.
+
+          If something goes wrong, report it in [GitHub Issues](https://github.com/BR3XALITYalt/RadioStreamPlus/issues).
+
+          EOF
+
+          printf '\nBuild commit: %s\n' "$COMMIT_SHA" >> release-notes.md
+
+          if gh release view continuous --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release edit continuous \
+              --repo "$REPOSITORY" \
+              --title "Continuous pre-release" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest=false
+          else
+            gh release create continuous \
+              --repo "$REPOSITORY" \
+              --title "Continuous pre-release" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest=false \
+              --verify-tag
+          fi
+
+          gh release upload continuous RadioStreamPlus-prerelease.zip \
+            --repo "$REPOSITORY" \
+            --clobber
