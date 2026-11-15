@@ -48,7 +48,7 @@ input:focus, select:focus, textarea:focus { border-color:#5b9bd5; outline:1px so
 input[type=range] { padding:0; accent-color:#4294dd; }
 .hint { color:#909ba3; font-size:12px; line-height:1.45; }
 #result-line { margin:0 0 12px; color:#b8c2c9; font-size:13px; line-height:1.5; }
-#receiver-list, #openwebrx-list { display:flex; flex-direction:column; gap:8px; max-height:450px; overflow:auto; }
+#receiver-list { display:flex; flex-direction:column; gap:8px; max-height:450px; overflow:auto; }
 .directory-section { margin-top:16px; padding-top:14px; border-top:1px solid #30383e; }
 .directory-section h3 { margin:0 0 8px; font-size:13px; font-weight:650; }
 .source-toggle { display:flex; align-items:center; gap:8px; margin:2px 0 8px; color:#c5cdd2; font-size:12px; }
@@ -186,10 +186,6 @@ input[type=range] { padding:0; accent-color:#4294dd; }
         <div class="panel-body">
           <p id="result-line">Set a pin and select Find receivers in range.</p>
           <div id="receiver-list"><p class="hint">No receiver list loaded yet.</p></div>
-          <div class="directory-section">
-            <h3>OpenWebRX instances</h3>
-            <div id="openwebrx-list"><p class="hint">No OpenWebRX list loaded yet.</p></div>
-          </div>
           <div class="directory-section">
             <h3>OpenWebRX sources</h3>
             <label class="source-toggle" for="receiverbook-enabled"><input id="receiverbook-enabled" type="checkbox" checked> Include public Receiverbook listings</label>
@@ -544,10 +540,10 @@ function renderReceivers(receivers, openwebrx) {
   clearReceiverMarkers();
   const list=$("receiver-list");
   list.replaceChildren();
-  if(!receivers.length) {
+  if(!receivers.length && !openwebrx.length) {
     const empty=document.createElement("p");
     empty.className="hint";
-    empty.textContent="No KiwiSDR receivers found in this area. Try increasing the search range.";
+    empty.textContent="No receivers found in this area. Try increasing the search range.";
     list.append(empty);
   }
   for(const item of receivers) {
@@ -566,8 +562,7 @@ function renderReceivers(receivers, openwebrx) {
     card.append(info,actions); list.append(card);
   }
 
-  const openList=$("openwebrx-list");
-  openList.replaceChildren();
+  const openList=list;
   if(!openwebrx.length) {
     const empty=document.createElement("p");
     empty.className="hint";
