@@ -2,7 +2,7 @@
 
 const HAMQSL_XML_URL = "/api/solar";
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-// HamQSL asks XML/RSS clients not to refresh more often than hourly.
+
 const RETRY_INTERVAL_MS = 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15 * 1000;
 const CLOCK_SETTINGS_KEY = "uvbinfobar.clockSettings";
@@ -141,7 +141,7 @@ function updateClocks() {
     if (label) label.textContent = clockSettings.label;
     if (offset) offset.textContent = `(${getUtcOffset(now, clockSettings.timeZone)})`;
 
-    // Keep longer city labels clear of the date and time on the right.
+    
     if (labelText) {
         const length = clockSettings.label.length;
         const layout = length <= 5 ? [42, 150] : length <= 8 ? [30, 165] : length <= 12 ? [24, 180] : [18, 195];
@@ -164,8 +164,8 @@ function readRequiredText(xmlDocument, selector, label) {
 }
 
 function getNoiseFloorColor(value) {
-    // HamQSL normally reports ranges such as "S2-S3". Use the worse
-    // (higher) end of the range, matching the original overlay's intent.
+    
+    
     const match = value.match(/^S(\d+)\s*-\s*S(\d+)$/i);
     if (!match) return "undefined";
 
@@ -242,7 +242,7 @@ function displayPropagationValues(values) {
     loadedData = values;
 
     for (const element of valueElements) {
-        // Reduced-motion mode removes the CSS animation, so update directly.
+        
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
             updateValueElement(element);
             continue;
@@ -269,7 +269,7 @@ async function fetchPropagationData() {
                 const payload = await response.json();
                 if (payload.error) detail += `: ${payload.error}`;
             } catch (_) {
-                // Preserve the HTTP status when the server did not return JSON.
+                
             }
             throw new Error(detail);
         }
@@ -303,7 +303,7 @@ async function refreshPropagationData() {
     const succeeded = await fetchPropagationData();
     const nextRefresh = succeeded ? REFRESH_INTERVAL_MS : RETRY_INTERVAL_MS;
 
-    // Schedule only after the previous request completes, so refreshes cannot overlap.
+    
     window.setTimeout(refreshPropagationData, nextRefresh);
 }
 
@@ -433,7 +433,7 @@ async function loadOverlayMessages() {
             26.4
         );
     } catch (error) {
-        // Keep the text embedded in index.html if the local config endpoint is unavailable.
+        
         console.warn("Unable to load saved overlay messages:", error);
     }
 }

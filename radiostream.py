@@ -31,8 +31,8 @@ REQUEST_TIMEOUT_SECONDS = 20
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_UPDATE_BYTES = 20 * 1024 * 1024
 
-# Deliberately excludes radiostream.py, user configuration, caches, and logs.
-# The launcher itself is never replaced by this updater.
+
+
 UPDATABLE_FILES = {
     "radiostream_core.py",
     "radiostream_server.py",
@@ -278,7 +278,7 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
     changed_python = bool(PYTHON_FILES.intersection(downloads))
 
     try:
-        # Stage every download before taking the site offline.
+        
         for path, content in downloads.items():
             staged[path] = stage_file(path, content)
             target = APP_DIR / path
@@ -325,9 +325,9 @@ def install_update(commit_sha: str, remote_files: dict[str, str]) -> bool:
 
         log("Installed " + ", ".join(sorted(installed)))
         if changed_python:
-            # Ask the main thread to stop the HTTP loop and reload the modules
-            # in place. Never spawn a replacement process: IDEs such as Thonny
-            # may not retain control of a detached child process.
+            
+            
+            
             log("Python modules changed. Reloading RadioStream+ in place.")
             RESTART_EVENT.set()
         else:
@@ -389,8 +389,8 @@ if __name__ == "__main__":
             if STOP_EVENT.is_set() or not RESTART_EVENT.is_set():
                 break
 
-            # Reload the implementation modules without creating another
-            # operating-system process. The launcher itself stays in control.
+            
+            
             import importlib
             log("Reloading updated Python modules.")
             importlib.reload(server.core)

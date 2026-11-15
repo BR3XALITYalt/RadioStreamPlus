@@ -184,7 +184,7 @@ def weighted_receiver_order(candidates: list[dict[str, Any]]) -> list[dict[str, 
             quality = 1.0
         preference_weight = preference_weights.get(item.get("preference"), 1.0)
         weight = quality * preference_weight
-        # Exponential-race sampling creates a weighted random permutation.
+        
         draw = max(random.random(), 1e-12)
         ranked.append((-math.log(draw) / weight, item))
     ranked.sort(key=lambda entry: entry[0])
@@ -388,8 +388,8 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
             return
         route = urllib.parse.urlsplit(self.path).path
 
-        # This endpoint and the maintenance document stay available while all
-        # normal application routes are locked.
+        
+        
         if route == "/api/maintenance":
             self.send_json(get_maintenance_state())
             return
@@ -564,8 +564,8 @@ def main(
     core.load_disk_directory()
     http_server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
     http_server.daemon_threads = True
-    # handle_request() returns after this timeout, allowing the launcher to
-    # check its stop/reload events without using a detached helper process.
+    
+    
     http_server.timeout = 0.5
 
     print("RadioStream+ is running.")

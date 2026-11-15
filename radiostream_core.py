@@ -26,7 +26,7 @@ DIRECTORY_MAX_AGE = 30 * 60
 DIRECTORY_MAX_BYTES = 32 * 1024 * 1024
 HAMQSL_URL = "https://www.hamqsl.com/solarxml.php"
 APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
-# Stable pseudonymous KiwiSDR identity for this RadioStream+ process.
+
 RADIOSTREAM_IDENT = "rsplus-" + "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(4))
 CONFIG_PATH = APP_DIR / "radiostream.json"
 DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
@@ -127,7 +127,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     ),
     "directory_cache_minutes": 30,
 }
-# KiwiSDR's built-in passband fallback values, in Hz relative to the tuned carrier.
+
 MODE_DEFAULT_PASSBANDS: dict[str, tuple[int, int]] = {
     "am": (-4900, 4900),
     "lsb": (-2700, -300),
@@ -375,8 +375,8 @@ def load_disk_directory() -> None:
         validate_directory(payload)
         directory_data = payload
         directory_fetched_at = payload.get("fetched_at")
-        # A disk cache is deliberately considered stale after restart. It is
-        # still available immediately while a fresh mirror request is made.
+        
+        
         directory_fetched_monotonic = 0.0
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"[directory] Ignoring invalid disk cache: {exc}", file=sys.stderr)
@@ -397,8 +397,8 @@ def fetch_directory(force: bool = False) -> dict[str, Any]:
         age = time.monotonic() - directory_fetched_monotonic
         if directory_data is not None and age < DIRECTORY_MAX_AGE:
             return directory_data
-        # A manual Refresh button may request an update, but never bypasses
-        # the data provider's 30-minute public cache window.
+        
+        
         request_obj = urllib.request.Request(
             DIRECTORY_URL,
             headers={"User-Agent": APP_USER_AGENT, "Accept": "application/json"},
@@ -459,7 +459,7 @@ def parse_receiver(receiver: dict[str, Any], cfg: dict[str, Any]) -> dict[str, A
     if not (math.isfinite(lat) and math.isfinite(lon)) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return None
     if abs(lat) < 1e-9 and abs(lon) < 1e-9:
-        return None  # KiwiSDR uses [0, 0] to mean no GPS fix.
+        return None  
 
     distance = haversine_km(cfg["center_lat"], cfg["center_lon"], lat, lon)
     if distance > cfg["radius_km"]:
@@ -554,11 +554,11 @@ def make_tune_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
         "pb": f"{cfg['passband_low']},{cfg['passband_high']}",
         "cmap": "1",
         "vol": str(cfg["volume"]),
-        # An empty "ext=" suppresses KiwiSDR's nonessential first-visit readme panel.
+        
         "ext": "",
-        # KiwiSDR uses u= to prefill and submit its required visitor identity.
+        
         "u": RADIOSTREAM_IDENT,
-        # KiwiSDR's native URL shortcut hides its panel UI, including Readme and Control.
+        
         "keys": "x",
     })
     return f"{receiver['url']}/?{query}"

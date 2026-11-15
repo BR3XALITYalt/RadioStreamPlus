@@ -15,7 +15,7 @@
                 location.replace("/m.html?return=" + encodeURIComponent(returnPath));
             }
         } catch (_) {
-            // A brief connection failure during a restart is expected.
+            
         } finally {
             checking = false;
         }
