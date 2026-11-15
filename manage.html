@@ -486,13 +486,15 @@ async function api(path, body) {
   return data;
 }
 function readSettings() {
+  const frequencyData=readFrequencyLinks();
+  const activeLink=frequencyData.links[frequencyData.selectedIndex];
   return {
     center_lat:center.lat,
     center_lon:center.lon,
     radius_km:Number($("radius").value),
-    frequency_khz:readFrequencyLinks().links[readFrequencyLinks().selectedIndex].frequency_khz,
-    frequency_links:readFrequencyLinks().links,
-    active_frequency_index:readFrequencyLinks().selectedIndex,
+    frequency_khz:activeLink.frequency_khz,
+    frequency_links:frequencyData.links,
+    active_frequency_index:frequencyData.selectedIndex,
     mode:$("mode").value,
     zoom:Number($("zoom").value),
     rotation_minutes:Number($("rotation").value),
