@@ -438,11 +438,26 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
         elif route == "/api/discover":
             try:
                 receivers, meta = core.discover_receivers()
-                with core.CONFIG_LOCK:
-                    cfg = dict(core.config)
-                self.send_json({"receivers": receivers, "meta": meta, "config": cfg})
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 503)
+            except RuntimeError as exc:
+                receivers = []
+                meta = {
+                    "directory_count": 0,
+                    "found_count": 0,
+                    "available_count": 0,
+                    "blocked_count": 0,
+                    "fetched_at": core.directory_fetched_at,
+                    "cache_error": str(exc),
+                }
+            openwebrx, openwebrx_meta = core.discover_openwebrx()
+            with core.CONFIG_LOCK:
+                cfg = dict(core.config)
+            self.send_json({
+                "receivers": receivers,
+                "meta": meta,
+                "openwebrx": openwebrx,
+                "openwebrx_meta": openwebrx_meta,
+                "config": cfg,
+            })
         elif route == "/api/solar":
             body, error_text, cache_status = fetch_solar_xml()
             if body is not None:
@@ -462,6 +477,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "version": "1.0",
                 "directory_cached": core.directory_data is not None,
+                "receiverbook_cached": core.receiverbook_data is not None,
             })
         else:
             self.send_error(404)
@@ -541,11 +557,23 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": bool(chosen), "state": get_state()})
 
             elif route == "/api/refresh-directory":
-                payload = core.fetch_directory()
+                try:
+                    payload = core.fetch_directory(force=True)
+                    kiwi_error = core.directory_error
+                    kiwi_count = len(payload.get("receivers", []))
+                except RuntimeError as exc:
+                    kiwi_error = str(exc)
+                    kiwi_count = 0
+                openwebrx, openwebrx_meta = core.discover_openwebrx(force=True)
                 self.send_json({
                     "ok": True,
-                    "fetched_at": payload.get("fetched_at"),
-                    "count": len(payload.get("receivers", [])),
+                    "fetched_at": core.directory_fetched_at,
+                    "count": kiwi_count,
+                    "kiwi_error": kiwi_error,
+                    "receiverbook_fetched_at": openwebrx_meta["fetched_at"],
+                    "receiverbook_count": openwebrx_meta["directory_count"],
+                    "receiverbook_error": openwebrx_meta["cache_error"],
+                    "openwebrx_in_range": len(openwebrx),
                 })
             else:
                 self.send_error(404)
@@ -562,6 +590,7 @@ def main(
     core.load_config()
     core.load_station_preferences()
     core.load_disk_directory()
+    core.load_disk_receiverbook_directory()
     http_server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
     http_server.daemon_threads = True
     

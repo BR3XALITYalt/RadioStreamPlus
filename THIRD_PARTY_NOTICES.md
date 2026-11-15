@@ -15,3 +15,8 @@ Receiver discovery uses the public JSON mirror documented by [AetherSDR](https:/
 ## Map tiles
 
 The management page uses [Leaflet](https://leafletjs.com/) and [OpenStreetMap](https://www.openstreetmap.org/) tiles. OpenStreetMap attribution is displayed in the map. Tile usage is subject to the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+
+
+## Receiverbook public directory
+
+OpenWebRX discovery reads public listing data from [Receiverbook](https://www.receiverbook.de/) using its [OpenWebRX map page](https://www.receiverbook.de/map?type=openwebrx). RadioStream+ consumes the published receiver records as directory data and does not copy or bundle Receiverbook source code. Listed receiver URLs are opened directly by the user.

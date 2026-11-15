@@ -38,7 +38,11 @@ input:focus, select:focus, textarea:focus { border-color:#5b9bd5; outline:1px so
 input[type=range] { padding:0; accent-color:#4294dd; }
 .hint { color:#909ba3; font-size:12px; line-height:1.45; }
 #result-line { margin:0 0 12px; color:#b8c2c9; font-size:13px; line-height:1.5; }
-#receiver-list { display:flex; flex-direction:column; gap:8px; max-height:450px; overflow:auto; }
+#receiver-list, #openwebrx-list { display:flex; flex-direction:column; gap:8px; max-height:450px; overflow:auto; }
+.directory-section { margin-top:16px; padding-top:14px; border-top:1px solid #30383e; }
+.directory-section h3 { margin:0 0 8px; font-size:13px; font-weight:650; }
+.receiver-openwebrx { border-left:3px solid #68a9e9; }
+.receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
 .receiver { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px; border:1px solid #343e45; border-radius:5px; background:#14191d; }
 .receiver strong { display:block; font-size:13px; font-weight:650; line-height:1.35; }
 .receiver small { display:block; margin-top:4px; color:#9ba7ae; font-size:11px; line-height:1.4; }
@@ -81,7 +85,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
         <button id="locate">Use browser location</button>
         <button id="scan" class="primary">Find receivers in range</button>
         <button id="refresh">Refresh directory</button>
-        <span class="hint">Click the map or drag the center pin to move the search area.</span>
+        <span class="hint">Green/gray: KiwiSDR · blue: OpenWebRX. Click the map or drag the center pin to move the search area.</span>
       </div>
     </section>
 
@@ -101,7 +105,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
             <div class="field wide"><label for="overlay-reload-notice">Overlay: automatic receiver reload notice</label><textarea id="overlay-reload-notice" rows="5" maxlength="800" spellcheck="true"></textarea><span class="hint">Use ${M} for the saved receiver rotation time. Use line breaks to control layout (up to 8 lines).</span></div>
             <div class="field wide"><label for="overlay-black-notice">Overlay: black-screen warning</label><textarea id="overlay-black-notice" rows="3" maxlength="800" spellcheck="true"></textarea><span class="hint">Shown in the OBS overlay. Use line breaks to control its layout (up to 8 lines).</span></div>
           </div>
-          <p class="hint" style="margin:12px 0 0;">Changing the modulation mode loads its KiwiSDR default passband. You can adjust the passband edges manually afterward. Settings are applied to every receiver when it is opened. Receiver locations and coverage come from the public KiwiSDR directory.</p>
+          <p class="hint" style="margin:12px 0 0;">Changing the modulation mode loads its KiwiSDR default passband. You can adjust the passband edges manually afterward. Settings are applied to KiwiSDR receivers. OpenWebRX instances are listed separately and open directly in a new tab.</p>
           <div class="section-actions"><button id="save" class="primary">Save settings</button><button id="next">Next receiver</button></div>
           <div id="save-status" class="status" role="status"></div>
           <div id="current" class="current"><strong>No receiver selected</strong><span>Choose an area, find receivers, and select one.</span></div>
@@ -114,6 +118,12 @@ input[type=range] { padding:0; accent-color:#4294dd; }
           <p id="result-line">Set a pin and select Find receivers in range.</p>
           <div id="receiver-list"><p class="hint">No receiver list loaded yet.</p></div>
           <div id="directory-status" class="status" role="status"></div>
+          <div class="directory-section">
+            <h3>OpenWebRX instances</h3>
+            <p class="hint">Public listings from Receiverbook. These open directly and are not included in KiwiSDR rotation.</p>
+            <div id="openwebrx-list"><p class="hint">No OpenWebRX list loaded yet.</p></div>
+            <div id="openwebrx-status" class="status" role="status"></div>
+          </div>
         </div>
       </section>
     </div>
@@ -133,6 +143,7 @@ let centerMarker = L.marker([center.lat, center.lon], {draggable:true}).addTo(ma
 let radiusCircle = L.circle([center.lat, center.lon], {radius:500000, color:"#5ea7e8", weight:1.5, fillOpacity:.08}).addTo(map);
 let receiverMarkers = [];
 let receiverItems = [];
+let openWebRXItems = [];
 let currentConfig = null;
 
 const PREFERENCE_ICONS = Object.freeze({
@@ -240,7 +251,7 @@ async function updateStationPreference(id, preference) {
       item.preference = data.preference;
       item.blocked = data.preference === "block";
       item.available = Boolean(item.directory_available) && !item.blocked;
-      renderReceivers(receiverItems);
+      renderReceivers(receiverItems, openWebRXItems);
     }
     showCurrent(data.state);
     const labels = {like:"Station liked. It will be favored in rotation.",dislike:"Station disliked. It will be less likely in rotation.",block:"Station blocked. It will no longer be selected.",none:"Station preference cleared."};
@@ -273,12 +284,18 @@ function showCurrent(state) {
   panel.replaceChildren(name,details,createPreferenceControls(current));
 }
 function setStatus(message,error=false) { $("save-status").textContent=message; $("save-status").className="status"+(error?" error":""); }
-function renderReceivers(receivers) {
+function renderReceivers(receivers, openwebrx) {
   receiverItems = receivers;
+  openWebRXItems = openwebrx;
   clearReceiverMarkers();
   const list=$("receiver-list");
   list.replaceChildren();
-  if(!receivers.length) { list.innerHTML='<p class="hint">No GPS-tagged receivers were found inside this range. Try increasing the radius.</p>'; return; }
+  if(!receivers.length) {
+    const empty=document.createElement("p");
+    empty.className="hint";
+    empty.textContent="No GPS-tagged KiwiSDR receivers were found inside this range. Try increasing the radius.";
+    list.append(empty);
+  }
   for(const item of receivers) {
     const marker=L.circleMarker([item.lat,item.lon],{radius:6,color:item.available?"#8ac9a3":"#a5a5a5",weight:1,fillColor:item.available?"#3e9664":"#777",fillOpacity:.85}).addTo(map);
     marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>${safeText(item.location)}<br>${item.distance_km} km · ${item.snr_hf} dB SNR<br>${item.users}/${item.users_max||"?"} users`);
@@ -294,16 +311,52 @@ function renderReceivers(receivers) {
     actions.append(button,createPreferenceControls(item));
     card.append(info,actions); list.append(card);
   }
+
+  const openList=$("openwebrx-list");
+  openList.replaceChildren();
+  if(!openwebrx.length) {
+    const empty=document.createElement("p");
+    empty.className="hint";
+    empty.textContent="No GPS-tagged OpenWebRX instances were found inside this range.";
+    openList.append(empty);
+  }
+  for(const item of openwebrx) {
+    const marker=L.circleMarker([item.lat,item.lon],{radius:7,color:"#8ec5ff",weight:1.5,fillColor:"#397eb8",fillOpacity:.9}).addTo(map);
+    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><a href="${safeText(item.url)}" target="_blank" rel="noopener">Open receiver</a><br><small>Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a></small>`);
+    receiverMarkers.push(marker);
+    const card=document.createElement("div");
+    card.className="receiver receiver-openwebrx";
+    const info=document.createElement("div");
+    const name=document.createElement("strong");
+    name.textContent=item.name;
+    const details=document.createElement("small");
+    details.textContent=`OpenWebRX ${item.version || "version not listed"} · ${item.distance_km} km away`;
+    info.append(name,details);
+    const actions=document.createElement("div");
+    actions.className="receiver-actions";
+    const link=document.createElement("a");
+    link.className="open-receiver";
+    link.href=item.url;
+    link.target="_blank";
+    link.rel="noopener";
+    link.textContent="Open receiver";
+    actions.append(link);
+    card.append(info,actions);
+    openList.append(card);
+  }
 }
 async function discover() {
   try {
     $("scan").disabled=true; $("result-line").textContent="Searching the cached public directory…";
     await saveSettings(false);
     const data=await api("/api/discover");
-    renderReceivers(data.receivers);
-    $("result-line").textContent=`Found ${data.meta.found_count} receivers in range; ${data.meta.available_count} available and ${data.meta.blocked_count || 0} blocked at ${$("frequency").value} kHz.`;
-    $("directory-status").textContent=`Directory contains ${data.meta.directory_count} listed receivers · snapshot ${data.meta.fetched_at || "date unavailable"}${data.meta.cache_error?" · refresh warning: "+data.meta.cache_error:""}`;
+    renderReceivers(data.receivers, data.openwebrx || []);
+    const openMeta=data.openwebrx_meta || {};
+    $("result-line").textContent=`Found ${data.meta.found_count} KiwiSDR receivers and ${openMeta.found_count || 0} OpenWebRX instances in range; ${data.meta.available_count} KiwiSDR available and ${data.meta.blocked_count || 0} blocked at ${$("frequency").value} kHz.`;
+    $("directory-status").textContent=`KiwiSDR directory: ${data.meta.directory_count} listed · snapshot ${data.meta.fetched_at || "date unavailable"}${data.meta.cache_error?" · refresh warning: "+data.meta.cache_error:""}`;
     $("directory-status").className="status"+(data.meta.cache_error?" error":"");
+    $("openwebrx-status").textContent=`Receiverbook: ${openMeta.directory_count || 0} online OpenWebRX instances · snapshot ${openMeta.fetched_at || "date unavailable"}${openMeta.cache_error?" · refresh warning: "+openMeta.cache_error:""}`;
+    $("openwebrx-status").className="status"+(openMeta.cache_error?" error":"");
     const state=await api("/api/state"); showCurrent(state);
   } catch(error) {
     $("result-line").textContent=error.message;
@@ -318,7 +371,14 @@ $("locate").addEventListener("click",()=>{
   setStatus("Waiting for browser location permission…");
   navigator.geolocation.getCurrentPosition(pos=>{setCenter(pos.coords.latitude,pos.coords.longitude,true);map.setZoom(7);setStatus("Search pin moved to your browser location. Click Find receivers in range.");},err=>setStatus(`Could not get location: ${err.message}`,true),{enableHighAccuracy:false,timeout:12000,maximumAge:300000});
 });
-$("refresh").addEventListener("click",async()=>{try{const data=await api("/api/refresh-directory",{});setStatus(`Directory snapshot: ${data.fetched_at||"unknown"}. The upstream cache is checked at most every 30 minutes.`,false);await discover();}catch(e){setStatus(e.message,true);}});
+$("refresh").addEventListener("click",async()=>{
+  try{
+    const data=await api("/api/refresh-directory",{});
+    const warnings=[data.kiwi_error,data.receiverbook_error].filter(Boolean);
+    setStatus(`Directory refresh complete: ${data.count} KiwiSDR and ${data.receiverbook_count} OpenWebRX entries.${warnings.length?" One or more sources returned a refresh warning.":""}`,warnings.length>0);
+    await discover();
+  }catch(e){setStatus(e.message,true);}
+});
 
 (async()=>{
   try {

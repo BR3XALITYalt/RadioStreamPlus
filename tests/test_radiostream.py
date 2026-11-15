@@ -157,6 +157,88 @@ class RadioStreamTests(unittest.TestCase):
         """
         self.assertFalse(rs.is_password_prompt_page(page))
 
+    def test_parses_receiverbook_openwebrx_map_data(self):
+        body = """
+            <script>
+                $(function() {
+                    var receivers = [
+                        {
+                            "label": "Station group",
+                            "location": {"type": "Point", "coordinates": [20.1, 10.1]},
+                            "receivers": [
+                                {
+                                    "label": "OpenWebRX receiver",
+                                    "version": "1.2.130",
+                                    "url": "https://sdr.example.test/",
+                                    "type": "openwebrx"
+                                },
+                                {
+                                    "label": "Kiwi receiver",
+                                    "url": "https://kiwi.example.test/",
+                                    "type": "kiwisdr"
+                                }
+                            ]
+                        }
+                    ];
+                    $('.map-container').addReceivers(receivers);
+                });
+            </script>
+        """
+        receivers = rs.parse_receiverbook_map(body)
+        self.assertEqual(len(receivers), 1)
+        self.assertEqual(receivers[0]["name"], "OpenWebRX receiver")
+        self.assertEqual(receivers[0]["station"], "Station group")
+        self.assertEqual(receivers[0]["lat"], 10.1)
+        self.assertEqual(receivers[0]["lon"], 20.1)
+        self.assertEqual(receivers[0]["type"], "openwebrx")
+
+    def test_receiverbook_rejects_local_urls(self):
+        self.assertIsNone(rs.normalize_receiverbook_url("http://127.0.0.1:8073/"))
+        self.assertIsNone(rs.normalize_receiverbook_url("http://localhost:8073/"))
+        self.assertIsNone(rs.normalize_receiverbook_url("ftp://sdr.example.test/"))
+        self.assertEqual(
+            rs.normalize_receiverbook_url("https://sdr.example.test/radio/"),
+            "https://sdr.example.test/radio/",
+        )
+
+    def test_discover_openwebrx_uses_saved_search_radius(self):
+        previous = (
+            rs.receiverbook_data,
+            rs.receiverbook_fetched_monotonic,
+            rs.receiverbook_fetched_at,
+            rs.receiverbook_error,
+            rs.config,
+        )
+        self.addCleanup(
+            lambda: (
+                setattr(rs, "receiverbook_data", previous[0]),
+                setattr(rs, "receiverbook_fetched_monotonic", previous[1]),
+                setattr(rs, "receiverbook_fetched_at", previous[2]),
+                setattr(rs, "receiverbook_error", previous[3]),
+                setattr(rs, "config", previous[4]),
+            )
+        )
+        rs.config = dict(self.cfg)
+        rs.receiverbook_data = [{
+            "id": "receiverbook:https://sdr.example.test/",
+            "name": "Nearby OpenWebRX",
+            "station": "Test station",
+            "version": "1.2.130",
+            "type": "openwebrx",
+            "url": "https://sdr.example.test/",
+            "lat": 10.1,
+            "lon": 20.1,
+        }]
+        rs.receiverbook_fetched_monotonic = rs.time.monotonic()
+        rs.receiverbook_fetched_at = "2026-11-14T00:00:00Z"
+        rs.receiverbook_error = None
+        found, meta = rs.discover_openwebrx()
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["name"], "Nearby OpenWebRX")
+        self.assertEqual(found[0]["source"], "Receiverbook")
+        self.assertTrue(found[0]["listed_online"])
+        self.assertEqual(meta["found_count"], 1)
+
     def test_directory_schema_validation(self):
         good = {"schema": 1, "receivers": [self.sample()]}
         self.assertEqual(len(rs.validate_directory(good)), 1)

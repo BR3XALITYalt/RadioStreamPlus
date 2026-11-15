@@ -12,3 +12,4 @@ solar_xml_cache.xml
 .solar_last_attempt
 station_preferences.json
 .station_preferences.json.tmp
+receiverbook_cache.json

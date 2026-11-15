@@ -24,6 +24,9 @@ PORT = 5056
 DIRECTORY_URL = "https://cdn.aethersdr.com/kiwi.json"
 DIRECTORY_MAX_AGE = 30 * 60
 DIRECTORY_MAX_BYTES = 32 * 1024 * 1024
+RECEIVERBOOK_MAP_URL = "https://www.receiverbook.de/map?type=openwebrx"
+RECEIVERBOOK_CACHE_MAX_AGE = 30 * 60
+RECEIVERBOOK_MAX_BYTES = 12 * 1024 * 1024
 HAMQSL_URL = "https://www.hamqsl.com/solarxml.php"
 APP_USER_AGENT = "RadioStreamPlus/1.0 (local KiwiSDR browser-stream manager)"
 
@@ -31,8 +34,14 @@ RADIOSTREAM_IDENT = "rsplus-" + "".join(secrets.choice("abcdefghijklmnopqrstuvwx
 CONFIG_PATH = APP_DIR / "radiostream.json"
 DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
 STATION_PREFERENCES_PATH = APP_DIR / "station_preferences.json"
+RECEIVERBOOK_CACHE_PATH = APP_DIR / "receiverbook_cache.json"
 STATION_PREFERENCES_LOCK = threading.RLock()
 station_preferences: dict[str, str] = {}
+RECEIVERBOOK_LOCK = threading.RLock()
+receiverbook_data: list[dict[str, Any]] | None = None
+receiverbook_fetched_monotonic = 0.0
+receiverbook_fetched_at: str | None = None
+receiverbook_error: str | None = None
 
 
 def load_station_preferences() -> None:
@@ -395,7 +404,7 @@ def fetch_directory(force: bool = False) -> dict[str, Any]:
     global directory_data, directory_fetched_monotonic, directory_fetched_at, directory_error
     with DIRECTORY_LOCK:
         age = time.monotonic() - directory_fetched_monotonic
-        if directory_data is not None and age < DIRECTORY_MAX_AGE:
+        if directory_data is not None and not force and age < DIRECTORY_MAX_AGE:
             return directory_data
         
         
@@ -428,6 +437,205 @@ def fetch_directory(force: bool = False) -> dict[str, Any]:
                 directory_fetched_monotonic = time.monotonic() - (DIRECTORY_MAX_AGE - 300)
                 return directory_data
             raise RuntimeError(f"Could not download the KiwiSDR public directory: {exc}") from exc
+
+
+
+def normalize_receiverbook_url(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            return None
+        if parsed.hostname.casefold() == "localhost" or parsed.hostname.casefold().endswith((".localhost", ".local")):
+            return None
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            address = None
+        if address is not None and not address.is_global:
+            return None
+        parsed.port
+    except ValueError:
+        return None
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/", "", ""))
+
+
+def validate_receiverbook_cache(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict) or payload.get("schema") != 1:
+        raise ValueError("Receiverbook cache has an unsupported schema")
+    entries = payload.get("receivers")
+    if not isinstance(entries, list) or len(entries) > 20000:
+        raise ValueError("Receiverbook cache has an invalid receiver list")
+    cleaned: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        url = normalize_receiverbook_url(item.get("url"))
+        if not url or url in seen:
+            continue
+        try:
+            lat = float(item.get("lat"))
+            lon = float(item.get("lon"))
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (abs(lat) < 1e-9 and abs(lon) < 1e-9):
+            continue
+        seen.add(url)
+        cleaned.append({
+            "id": "receiverbook:" + url,
+            "name": str(item.get("name") or urllib.parse.urlsplit(url).hostname)[:160],
+            "station": str(item.get("station") or "")[:160],
+            "version": str(item.get("version") or "")[:80],
+            "type": "openwebrx",
+            "url": url,
+            "lat": lat,
+            "lon": lon,
+        })
+    return cleaned
+
+
+def parse_receiverbook_map(body: str) -> list[dict[str, Any]]:
+    match = re.search(r"\b(?:var|let|const)\s+receivers\s*=\s*", body)
+    if not match:
+        raise ValueError("Receiverbook map page did not contain its receiver data")
+    start = match.end()
+    decoder = json.JSONDecoder()
+    payload, _ = decoder.raw_decode(body[start:].lstrip())
+    if not isinstance(payload, list) or len(payload) > 20000:
+        raise ValueError("Receiverbook map page contained an invalid receiver list")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in payload:
+        if not isinstance(group, dict):
+            continue
+        location = group.get("location")
+        coordinates = location.get("coordinates") if isinstance(location, dict) else None
+        if not isinstance(coordinates, list) or len(coordinates) != 2:
+            continue
+        try:
+            lon, lat = float(coordinates[0]), float(coordinates[1])
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (abs(lat) < 1e-9 and abs(lon) < 1e-9):
+            continue
+        station = str(group.get("label") or "")[:160]
+        receivers = group.get("receivers")
+        if not isinstance(receivers, list):
+            receivers = [group] if group.get("url") else []
+        for receiver in receivers:
+            if not isinstance(receiver, dict) or str(receiver.get("type") or "openwebrx").casefold() != "openwebrx":
+                continue
+            url = normalize_receiverbook_url(receiver.get("url"))
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            name = str(receiver.get("label") or station or urllib.parse.urlsplit(url).hostname)[:160]
+            normalized.append({
+                "id": "receiverbook:" + url,
+                "name": name,
+                "station": station,
+                "version": str(receiver.get("version") or "")[:80],
+                "type": "openwebrx",
+                "url": url,
+                "lat": lat,
+                "lon": lon,
+            })
+    return validate_receiverbook_cache({"schema": 1, "receivers": normalized})
+
+
+def load_disk_receiverbook_directory() -> None:
+    global receiverbook_data, receiverbook_fetched_at, receiverbook_fetched_monotonic
+    if not RECEIVERBOOK_CACHE_PATH.exists():
+        return
+    try:
+        payload = json.loads(RECEIVERBOOK_CACHE_PATH.read_text(encoding="utf-8"))
+        receiverbook_data = validate_receiverbook_cache(payload)
+        receiverbook_fetched_at = payload.get("fetched_at")
+        receiverbook_fetched_monotonic = 0.0
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"[receiverbook] Ignoring invalid disk cache: {exc}", file=sys.stderr)
+
+
+def fetch_receiverbook_directory(force: bool = False) -> list[dict[str, Any]]:
+    global receiverbook_data, receiverbook_fetched_monotonic, receiverbook_fetched_at, receiverbook_error
+    with RECEIVERBOOK_LOCK:
+        age = time.monotonic() - receiverbook_fetched_monotonic
+        if receiverbook_data is not None and not force and age < RECEIVERBOOK_CACHE_MAX_AGE:
+            return receiverbook_data
+        request_obj = urllib.request.Request(
+            RECEIVERBOOK_MAP_URL,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; RadioStreamPlus/1.0)",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request_obj, timeout=15) as response:
+                body = response.read(RECEIVERBOOK_MAX_BYTES + 1)
+            if len(body) > RECEIVERBOOK_MAX_BYTES:
+                raise ValueError("Receiverbook map page exceeded the 12 MB safety limit")
+            records = parse_receiverbook_map(body.decode("utf-8"))
+            fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            payload = {"schema": 1, "fetched_at": fetched_at, "receivers": records}
+            receiverbook_data = records
+            receiverbook_fetched_at = fetched_at
+            receiverbook_fetched_monotonic = time.monotonic()
+            receiverbook_error = None
+            try:
+                temporary = RECEIVERBOOK_CACHE_PATH.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                temporary.replace(RECEIVERBOOK_CACHE_PATH)
+            except OSError as exc:
+                print(f"[receiverbook] Could not persist cache: {exc}", file=sys.stderr)
+            return records
+        except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            receiverbook_error = str(exc)
+            if receiverbook_data is not None:
+                print(f"[receiverbook] Refresh failed; using cached data: {exc}", file=sys.stderr)
+                receiverbook_fetched_monotonic = time.monotonic() - (RECEIVERBOOK_CACHE_MAX_AGE - 300)
+                return receiverbook_data
+            raise RuntimeError(f"Could not download the Receiverbook OpenWebRX directory: {exc}") from exc
+
+
+def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    try:
+        records = fetch_receiverbook_directory(force=force)
+    except RuntimeError as exc:
+        records = receiverbook_data or []
+        if receiverbook_error is None:
+            error = str(exc)
+        else:
+            error = receiverbook_error
+    else:
+        error = receiverbook_error
+    with CONFIG_LOCK:
+        cfg = dict(config)
+    found: list[dict[str, Any]] = []
+    for item in records:
+        distance = haversine_km(cfg["center_lat"], cfg["center_lon"], item["lat"], item["lon"])
+        if distance > cfg["radius_km"]:
+            continue
+        found.append({
+            **item,
+            "distance_km": round(distance, 1),
+            "source": "Receiverbook",
+            "listed_online": True,
+        })
+    found.sort(key=lambda item: (item["distance_km"], item["name"].casefold()))
+    meta = {
+        "directory_count": len(records),
+        "found_count": len(found),
+        "fetched_at": receiverbook_fetched_at,
+        "cache_error": error,
+        "directory_url": RECEIVERBOOK_MAP_URL,
+    }
+    return found, meta
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
