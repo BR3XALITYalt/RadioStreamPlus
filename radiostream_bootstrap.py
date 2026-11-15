@@ -241,16 +241,22 @@ def extract_source_archive(archive_data: bytes, destination: Path) -> None:
             relative_name = "/".join(relative_parts)
             target = destination.joinpath(*relative_parts)
 
+            mode = (info.external_attr >> 16) & 0xFFFF
+            file_type = stat.S_IFMT(mode)
+
             if info.is_dir():
+                if file_type not in (0, stat.S_IFDIR):
+                    raise BootstrapError("The source archive contains an invalid directory entry.")
                 target.mkdir(parents=True, exist_ok=True)
                 continue
 
             if info.flag_bits & 0x1:
                 raise BootstrapError("Encrypted files are not accepted in the source archive.")
 
-            mode = (info.external_attr >> 16) & 0xFFFF
-            if stat.S_ISLNK(mode):
+            if file_type == stat.S_IFLNK:
                 raise BootstrapError("Symbolic links are not accepted in the source archive.")
+            if file_type not in (0, stat.S_IFREG):
+                raise BootstrapError("The source archive contains an unsupported file type.")
 
             if info.file_size < 0 or info.file_size > MAX_FILE_BYTES:
                 raise BootstrapError(f"Source file exceeds the size limit: {relative_name}")
@@ -426,6 +432,15 @@ def install_source_archive(
     root.mkdir(parents=True, exist_ok=True)
     active = root / "source"
     backup = root / ".source-previous"
+
+    # Recover the previous complete source if a prior replacement was interrupted.
+    if backup.exists():
+        if source_is_complete(backup) and not source_is_complete(active):
+            remove_path(active)
+            os.replace(backup, active)
+        else:
+            remove_path(backup)
+
     staging = Path(tempfile.mkdtemp(prefix=".source-staging-", dir=root))
 
     try:
@@ -490,11 +505,27 @@ def migrate_adjacent_data(executable_dir: Path, data_dir: Path) -> None:
         target = target_dir / filename
         if not source.is_file() or target.exists():
             continue
+        temporary_name = None
         try:
-            shutil.copy2(source, target)
+            fd, temporary_name = tempfile.mkstemp(
+                prefix=f".{filename}.migration-",
+                suffix=".tmp",
+                dir=data_dir,
+            )
+            with source.open("rb") as input_file, os.fdopen(fd, "wb") as output_file:
+                shutil.copyfileobj(input_file, output_file)
+                output_file.flush()
+                os.fsync(output_file.fileno())
+            os.replace(temporary_name, target)
             log(f"Imported existing {filename}.")
         except OSError as exc:
             log(f"Could not import {filename}: {exc}")
+        finally:
+            if temporary_name:
+                try:
+                    os.unlink(temporary_name)
+                except FileNotFoundError:
+                    pass
 
 
 def choose_source(root: Path, data_dir: Path) -> Path:
