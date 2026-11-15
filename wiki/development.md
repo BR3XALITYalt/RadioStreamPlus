@@ -34,11 +34,3 @@ The launcher checks the public `main` branch for changes on a two-minute interva
 
 The launcher has an explicit allowlist of application files. It does not replace user data such as configuration, caches, preferences, custom OpenWebRX instances, or radio presets. The launcher itself is not self-updated by this mechanism.
 
-## Contribution guidelines
-
-- Keep the application small and avoid adding frameworks or services without a clear need.
-- Preserve existing user data when changing configuration schemas.
-- Validate data at the server boundary, not only in the browser.
-- Keep public receiver URL handling restricted to public addresses.
-- Add regression tests for new parsing, persistence, and validation behavior.
-- Update the relevant wiki page when adding user-facing functionality.
