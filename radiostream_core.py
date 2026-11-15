@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import copy
 import html
 import ipaddress
 import json
@@ -502,6 +503,25 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
     if frequency_khz not in frequencies_khz:
         frequency_khz = frequencies_khz[0]
 
+    center_lat = clamp_number(
+        item.get("center_lat", DEFAULT_CONFIG["center_lat"]),
+        "Preset marker latitude",
+        -90,
+        90,
+    )
+    center_lon = clamp_number(
+        item.get("center_lon", DEFAULT_CONFIG["center_lon"]),
+        "Preset marker longitude",
+        -180,
+        180,
+    )
+    radius_km = clamp_number(
+        item.get("radius_km", DEFAULT_CONFIG["radius_km"]),
+        "Preset search range",
+        1,
+        20000,
+    )
+
     mode = str(item.get("mode") or "").strip().lower()
     if mode not in VALID_MODES:
         raise ValueError("Preset mode must be AM, LSB, USB, CW, or NBFM")
@@ -532,6 +552,9 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
         "name": name,
         "frequency_khz": frequency_khz,
         "frequencies_khz": frequencies_khz,
+        "center_lat": center_lat,
+        "center_lon": center_lon,
+        "radius_km": radius_km,
         "mode": mode,
         "passband_low": passband_low,
         "passband_high": passband_high,
@@ -638,6 +661,9 @@ def export_radio_presets_xml() -> bytes:
         entry = ET.SubElement(root, "preset", {"id": item["id"]})
         ET.SubElement(entry, "name").text = item["name"]
         ET.SubElement(entry, "frequency-khz").text = str(item["frequency_khz"])
+        ET.SubElement(entry, "center-lat").text = str(item["center_lat"])
+        ET.SubElement(entry, "center-lon").text = str(item["center_lon"])
+        ET.SubElement(entry, "radius-km").text = str(item["radius_km"])
         frequencies = ET.SubElement(entry, "frequencies-khz")
         for frequency in item["frequencies_khz"]:
             ET.SubElement(frequencies, "frequency").text = str(frequency)
@@ -688,6 +714,9 @@ def import_radio_presets_xml(xml_text: str) -> dict[str, Any]:
             "id": entry.get("id"),
             "name": field("name"),
             "frequency_khz": field("frequency-khz"),
+            "center_lat": field("center-lat"),
+            "center_lon": field("center-lon"),
+            "radius_km": field("radius-km"),
             "mode": field("mode"),
             "passband_low": field("passband-low"),
             "passband_high": field("passband-high"),
@@ -739,6 +768,245 @@ def import_radio_presets_xml(xml_text: str) -> dict[str, Any]:
             "added": added_count,
             "updated": updated_count,
         }
+
+def _xml_write_value(node: ET.Element, value: Any) -> None:
+    """Write JSON-compatible application data into typed XML elements."""
+    if value is None:
+        node.set("type", "null")
+    elif isinstance(value, bool):
+        node.set("type", "bool")
+        node.text = "true" if value else "false"
+    elif isinstance(value, int):
+        node.set("type", "int")
+        node.text = str(value)
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("Backup data contains a non-finite number")
+        node.set("type", "float")
+        node.text = repr(value)
+    elif isinstance(value, str):
+        node.set("type", "string")
+        node.text = value
+    elif isinstance(value, list):
+        node.set("type", "list")
+        for item in value:
+            child = ET.SubElement(node, "item")
+            _xml_write_value(child, item)
+    elif isinstance(value, dict):
+        node.set("type", "dict")
+        for key, item in value.items():
+            child = ET.SubElement(node, "entry", {"key": str(key)})
+            _xml_write_value(child, item)
+    else:
+        raise ValueError(f"Backup contains unsupported data type: {type(value).__name__}")
+
+
+def _xml_read_value(node: ET.Element) -> Any:
+    """Read a typed XML value and reject unknown or malformed value types."""
+    value_type = node.get("type")
+    if value_type == "null":
+        return None
+    if value_type == "bool":
+        value = (node.text or "").strip().lower()
+        if value not in {"true", "false"}:
+            raise ValueError("Backup contains an invalid boolean")
+        return value == "true"
+    if value_type == "int":
+        try:
+            return int((node.text or "").strip())
+        except ValueError as exc:
+            raise ValueError("Backup contains an invalid integer") from exc
+    if value_type == "float":
+        try:
+            value = float((node.text or "").strip())
+        except ValueError as exc:
+            raise ValueError("Backup contains an invalid number") from exc
+        if not math.isfinite(value):
+            raise ValueError("Backup contains a non-finite number")
+        return value
+    if value_type == "string":
+        return node.text or ""
+    if value_type == "list":
+        if any(child.tag != "item" for child in node):
+            raise ValueError("Backup contains an invalid list entry")
+        return [_xml_read_value(child) for child in node]
+    if value_type == "dict":
+        result: dict[str, Any] = {}
+        for child in node:
+            if child.tag != "entry" or not child.get("key"):
+                raise ValueError("Backup contains an invalid object entry")
+            key = child.get("key")
+            if key in result:
+                raise ValueError(f'Backup contains a duplicate key "{key}"')
+            result[key] = _xml_read_value(child)
+        return result
+    raise ValueError(f"Backup contains an unsupported value type: {value_type or 'missing'}")
+
+
+def export_all_data_xml() -> bytes:
+    """Export all user-managed RadioStream+ data, excluding downloaded directory caches."""
+    with CONFIG_LOCK, RADIO_PRESETS_LOCK, OPENWEBRX_CUSTOM_LOCK, STATION_PREFERENCES_LOCK:
+        snapshot = {
+            "configuration": copy.deepcopy(config),
+            "presets": copy.deepcopy(radio_presets),
+            "custom_openwebrx": copy.deepcopy(openwebrx_custom_data),
+            "station_preferences": copy.deepcopy(station_preferences),
+        }
+
+    root = ET.Element("radiostream-plus-backup", {"version": "1"})
+    for section_name, value in snapshot.items():
+        section = ET.SubElement(root, section_name)
+        _xml_write_value(section, value)
+
+    ET.indent(root, space="  ")
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        + ET.tostring(root, encoding="utf-8")
+        + b"\n"
+    )
+
+
+def _replace_data_files_atomically(files: dict[Path, bytes]) -> None:
+    """Replace several data files together, rolling back if any replacement fails."""
+    originals: dict[Path, bytes | None] = {}
+    staged: dict[Path, Path] = {}
+    replaced: list[Path] = []
+
+    for path in files:
+        try:
+            originals[path] = path.read_bytes()
+        except FileNotFoundError:
+            originals[path] = None
+
+    try:
+        for path, content in files.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_name(path.name + ".restore.tmp")
+            temporary.write_bytes(content)
+            staged[path] = temporary
+
+        for path, temporary in staged.items():
+            os.replace(temporary, path)
+            replaced.append(path)
+    except Exception as exc:
+        rollback_errors: list[str] = []
+        for path in reversed(replaced):
+            original = originals[path]
+            try:
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    temporary = path.with_name(path.name + ".rollback.tmp")
+                    temporary.write_bytes(original)
+                    os.replace(temporary, path)
+            except OSError as rollback_exc:
+                rollback_errors.append(f"{path.name}: {rollback_exc}")
+        if rollback_errors:
+            raise RuntimeError(
+                "Backup import failed and rollback was incomplete: "
+                + "; ".join(rollback_errors)
+            ) from exc
+        raise RuntimeError(f"Could not restore all application data: {exc}") from exc
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
+
+
+def import_all_data_xml(xml_text: str) -> dict[str, int]:
+    """Validate and restore a complete versioned RadioStream+ backup."""
+    global config, radio_presets, openwebrx_custom_data, station_preferences
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        raise ValueError("The backup XML file is empty")
+    if len(xml_text.encode("utf-8")) > 5 * 1024 * 1024:
+        raise ValueError("The backup XML file exceeds the 5 MB limit")
+    if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", xml_text, flags=re.IGNORECASE):
+        raise ValueError("XML document types and entities are not supported")
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid backup XML: {exc}") from exc
+
+    if root.tag != "radiostream-plus-backup":
+        raise ValueError("The XML root must be <radiostream-plus-backup>")
+    version = root.get("version")
+    if version != "1":
+        raise ValueError(f"Unsupported full-backup XML version: {version or 'missing'}")
+
+    expected_sections = {
+        "configuration",
+        "presets",
+        "custom_openwebrx",
+        "station_preferences",
+    }
+    sections: dict[str, ET.Element] = {}
+    for child in root:
+        if child.tag not in expected_sections or child.tag in sections:
+            raise ValueError(f"Backup contains an unknown or duplicate section: {child.tag}")
+        sections[child.tag] = child
+    if set(sections) != expected_sections:
+        missing = sorted(expected_sections - set(sections))
+        raise ValueError("Backup is missing required sections: " + ", ".join(missing))
+
+    raw_configuration = _xml_read_value(sections["configuration"])
+    raw_presets = _xml_read_value(sections["presets"])
+    raw_custom = _xml_read_value(sections["custom_openwebrx"])
+    raw_preferences = _xml_read_value(sections["station_preferences"])
+
+    if not isinstance(raw_configuration, dict):
+        raise ValueError("Backup configuration must be an object")
+    cleaned_config = validate_config(raw_configuration, allow_partial=True)
+
+    if not isinstance(raw_presets, list):
+        raise ValueError("Backup presets must be a list")
+    cleaned_presets = validate_radio_presets({"schema": 2, "presets": raw_presets})
+    if len(cleaned_presets) != len(raw_presets):
+        raise ValueError("Backup contains invalid or duplicate presets")
+
+    if not isinstance(raw_custom, list):
+        raise ValueError("Backup custom receivers must be a list")
+    cleaned_custom = validate_custom_openwebrx({"schema": 1, "instances": raw_custom})
+    if len(cleaned_custom) != len(raw_custom):
+        raise ValueError("Backup contains an invalid custom OpenWebRX receiver")
+
+    if not isinstance(raw_preferences, dict) or len(raw_preferences) > 20000:
+        raise ValueError("Backup station preferences are invalid")
+    cleaned_preferences: dict[str, str] = {}
+    for station_id, preference in raw_preferences.items():
+        station_id = str(station_id).strip()
+        if (
+            not station_id
+            or len(station_id) > 2048
+            or preference not in {"like", "dislike", "block"}
+        ):
+            raise ValueError("Backup contains an invalid station preference")
+        cleaned_preferences[station_id] = preference
+
+    files = {
+        CONFIG_PATH: (json.dumps(cleaned_config, indent=2) + "\n").encode("utf-8"),
+        RADIO_PRESETS_PATH: (
+            json.dumps({"schema": 2, "presets": cleaned_presets}, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8"),
+        OPENWEBRX_CUSTOM_PATH: (
+            json.dumps({"schema": 1, "instances": cleaned_custom}, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8"),
+        STATION_PREFERENCES_PATH: (
+            json.dumps({"schema": 1, "stations": cleaned_preferences}, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8"),
+    }
+
+    with CONFIG_LOCK, RADIO_PRESETS_LOCK, OPENWEBRX_CUSTOM_LOCK, STATION_PREFERENCES_LOCK:
+        _replace_data_files_atomically(files)
+        config = cleaned_config
+        radio_presets = cleaned_presets
+        openwebrx_custom_data = cleaned_custom
+        station_preferences = cleaned_preferences
+
+    return {
+        "presets": len(cleaned_presets),
+        "custom_receivers": len(cleaned_custom),
+        "station_preferences": len(cleaned_preferences),
+    }
+
 
 def remove_radio_preset(preset_id: Any) -> list[dict[str, Any]]:
     global radio_presets
