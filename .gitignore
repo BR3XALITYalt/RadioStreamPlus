@@ -13,3 +13,5 @@ solar_xml_cache.xml
 station_preferences.json
 .station_preferences.json.tmp
 receiverbook_cache.json
+openwebrx_custom.json
+openwebrx_custom.json.tmp
