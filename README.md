@@ -58,7 +58,7 @@ The management page and `radiostream.json` support:
 
 - `center_lat`, `center_lon`: center pin coordinates.
 - `radius_km`: discovery range, from 1 to 20,000 km.
-- `frequency_khz`: tuned frequency in kHz, from 10 to 30,000 kHz.
+- `frequency_khz`: tuned frequency stored in kHz, from 1 Hz to 300 GHz. The management page lets you enter it in Hz, kHz, MHz, or GHz.
 - `mode`: `am`, `lsb`, `usb`, `cw`, or `nbfm`.
 - `zoom`: KiwiSDR waterfall zoom, applied to every receiver when it is opened (0–14).
 - `volume`: KiwiSDR volume value (0–200).
@@ -88,7 +88,7 @@ Frequency, mode, zoom, volume, and passband settings are applied consistently wh
 
 RadioStream+ downloads the schema-1 public receiver list from the AetherSDR KiwiSDR directory mirror at `https://cdn.aethersdr.com/kiwi.json`. The directory's published cache window is 30 minutes; RadioStream+ respects that and keeps a local cache in `kiwi_directory_cache.json` so a temporary directory outage does not immediately erase the map. The mirror's `fetched_at` timestamp is shown in the management page.
 
-OpenWebRX discovery uses Receiverbook's public map data at `https://www.receiverbook.de/map?type=openwebrx`. RadioStream+ reads the online listings and their published coordinates, then keeps a separate local cache in `receiverbook_cache.json` for up to 30 minutes. OpenWebRX instances appear as blue map markers and in their own list with links that request the configured frequency and modulation using OpenWebRX's URL fragment format (`#freq=4625000,mod=usb`, with frequency in Hz). OpenWebRX and OpenWebRX+ share this tuning format; OpenWebRX+ also supports an optional `key` fragment for installations configured with a magic key, which Receiverbook does not publish. A requested frequency is accepted only when it falls inside that receiver's active profile bandwidth. OpenWebRX instances are browse-only: the current SDR player, health checks, and automatic rotation remain KiwiSDR-specific. Receiverbook's online status is a directory snapshot, not a live connection guarantee.
+OpenWebRX discovery uses Receiverbook's public listings and coordinates. Nearby receivers are checked against their advertised frequency ranges, and only receivers with a profile covering the selected frequency are shown. Their links open the receiver at the selected frequency and modulation. A receiver may still reject the tune if its active profile has changed. OpenWebRX instances open separately in the browser and are not part of automatic KiwiSDR rotation.
 
 KiwiSDR coordinates come from the AetherSDR directory's `gps` pair. OpenWebRX coordinates come from Receiverbook's GeoJSON `location.coordinates` pair. Both sources use the same map center and search radius. KiwiSDR receivers without a valid GPS fix, outside the selected radius or configured frequency band, marked offline, flagged by the directory, or listed as full are not selected for playback. The map can still show unavailable KiwiSDR entries when their locations are valid.
 
