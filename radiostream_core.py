@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import urllib.error
+import xml.etree.ElementTree as ET
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -462,7 +463,7 @@ def save_config() -> None:
 
 
 def normalize_radio_preset(item: Any) -> dict[str, Any]:
-    """Validate and normalize a saved frequency/mode preset."""
+    """Validate and normalize a radio preset, including its frequency shuffle list."""
     if not isinstance(item, dict):
         raise ValueError("Radio preset must be an object")
     name = str(item.get("name") or "").strip()
@@ -471,12 +472,33 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
     if len(name) > 80:
         raise ValueError("Preset names must be 80 characters or fewer")
 
+    raw_frequencies = item.get("frequencies_khz")
+    if raw_frequencies is None:
+        raw_frequencies = [item.get("frequency_khz")]
+    if not isinstance(raw_frequencies, list) or not 1 <= len(raw_frequencies) <= MAX_FREQUENCIES:
+        raise ValueError(f"Preset must contain between 1 and {MAX_FREQUENCIES} frequencies")
+
+    frequencies_khz: list[float] = []
+    for index, value in enumerate(raw_frequencies):
+        frequency = clamp_number(
+            value,
+            f"Preset frequency {index + 1} (kHz)",
+            0.001,
+            300000000,
+        )
+        if frequency in frequencies_khz:
+            raise ValueError("Each preset frequency must be unique")
+        frequencies_khz.append(frequency)
+
     frequency_khz = clamp_number(
-        item.get("frequency_khz"),
-        "Preset frequency (kHz)",
+        item.get("frequency_khz", frequencies_khz[0]),
+        "Preset active frequency (kHz)",
         0.001,
         300000000,
     )
+    if frequency_khz not in frequencies_khz:
+        frequency_khz = frequencies_khz[0]
+
     mode = str(item.get("mode") or "").strip().lower()
     if mode not in VALID_MODES:
         raise ValueError("Preset mode must be AM, LSB, USB, CW, or NBFM")
@@ -490,6 +512,12 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
     if passband_low >= passband_high:
         raise ValueError("Preset passband low must be smaller than passband high")
 
+    rotation_minutes = clamp_number(
+        item.get("rotation_minutes", DEFAULT_CONFIG["rotation_minutes"]),
+        "Preset rotation interval",
+        3,
+        60,
+    )
     preset_id = str(item.get("id") or ("preset-" + secrets.token_hex(8)))
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", preset_id):
         raise ValueError("Preset ID is invalid")
@@ -497,14 +525,20 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
         "id": preset_id,
         "name": name,
         "frequency_khz": frequency_khz,
+        "frequencies_khz": frequencies_khz,
         "mode": mode,
         "passband_low": passband_low,
         "passband_high": passband_high,
+        "rotation_minutes": rotation_minutes,
     }
 
 
 def validate_radio_presets(payload: Any) -> list[dict[str, Any]]:
-    if not isinstance(payload, dict) or payload.get("schema") != 1:
+    if (
+        not isinstance(payload, dict)
+        or type(payload.get("schema")) is not int
+        or payload.get("schema") not in {1, 2}
+    ):
         raise ValueError("Radio preset file has an unsupported schema")
     entries = payload.get("presets")
     if not isinstance(entries, list) or len(entries) > 200:
@@ -524,7 +558,7 @@ def validate_radio_presets(payload: Any) -> list[dict[str, Any]]:
 
 
 def _write_radio_presets(presets: list[dict[str, Any]]) -> None:
-    payload = json.dumps({"schema": 1, "presets": presets}, ensure_ascii=False, indent=2) + "\n"
+    payload = json.dumps({"schema": 2, "presets": presets}, ensure_ascii=False, indent=2) + "\n"
     try:
         temporary = RADIO_PRESETS_PATH.with_suffix(".json.tmp")
         temporary.write_text(payload, encoding="utf-8")
@@ -549,6 +583,13 @@ def load_radio_presets() -> None:
     except ValueError as exc:
         print(f"[presets] Ignoring invalid preset file: {exc}", file=sys.stderr)
         return
+
+    if payload.get("schema") == 1:
+        try:
+            _write_radio_presets(cleaned)
+            print("[presets] Migrated saved presets to schema 2.")
+        except RuntimeError as exc:
+            print(f"[presets] Could not migrate saved presets: {exc}", file=sys.stderr)
     with RADIO_PRESETS_LOCK:
         radio_presets = cleaned
 
@@ -576,11 +617,122 @@ def save_radio_preset(raw: Any) -> list[dict[str, Any]]:
         else:
             if len(updated) >= 200:
                 raise ValueError("The radio preset list is full (200 presets)")
+            if any(item["id"] == preset["id"] for item in updated):
+                preset["id"] = "preset-" + secrets.token_hex(8)
             updated.append(preset)
         _write_radio_presets(updated)
         radio_presets = updated
         return [dict(item) for item in updated]
 
+
+def export_radio_presets_xml() -> bytes:
+    """Export presets in the versioned RadioStream+ XML format."""
+    root = ET.Element("radio-stream-presets", {"version": "1"})
+    for item in get_radio_presets():
+        entry = ET.SubElement(root, "preset", {"id": item["id"]})
+        ET.SubElement(entry, "name").text = item["name"]
+        ET.SubElement(entry, "frequency-khz").text = str(item["frequency_khz"])
+        frequencies = ET.SubElement(entry, "frequencies-khz")
+        for frequency in item["frequencies_khz"]:
+            ET.SubElement(frequencies, "frequency").text = str(frequency)
+        ET.SubElement(entry, "mode").text = item["mode"]
+        ET.SubElement(entry, "passband-low").text = str(item["passband_low"])
+        ET.SubElement(entry, "passband-high").text = str(item["passband_high"])
+        ET.SubElement(entry, "rotation-minutes").text = str(item["rotation_minutes"])
+
+    ET.indent(root, space="  ")
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        + ET.tostring(root, encoding="utf-8")
+        + b"\n"
+    )
+
+
+def import_radio_presets_xml(xml_text: str) -> dict[str, Any]:
+    """Validate and merge a versioned XML preset file by preset name."""
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        raise ValueError("The XML preset file is empty")
+    if len(xml_text.encode("utf-8")) > 512 * 1024:
+        raise ValueError("The XML preset file exceeds the 512 KB limit")
+    if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", xml_text, flags=re.IGNORECASE):
+        raise ValueError("XML document types and entities are not supported")
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid preset XML: {exc}") from exc
+
+    if root.tag != "radio-stream-presets":
+        raise ValueError("The XML root must be <radio-stream-presets>")
+    version = root.get("version")
+    if version != "1":
+        raise ValueError(f"Unsupported preset XML version: {version or 'missing'}")
+
+    entries = root.findall("preset")
+    if not entries or len(entries) > 200:
+        raise ValueError("The XML file must contain between 1 and 200 presets")
+
+    imported: list[dict[str, Any]] = []
+    imported_names: set[str] = set()
+    for entry in entries:
+        def field(name: str) -> str | None:
+            node = entry.find(name)
+            return node.text.strip() if node is not None and node.text else None
+
+        raw: dict[str, Any] = {
+            "id": entry.get("id"),
+            "name": field("name"),
+            "frequency_khz": field("frequency-khz"),
+            "mode": field("mode"),
+            "passband_low": field("passband-low"),
+            "passband_high": field("passband-high"),
+            "rotation_minutes": field("rotation-minutes"),
+        }
+        frequency_list = entry.find("frequencies-khz")
+        if frequency_list is not None:
+            raw["frequencies_khz"] = [
+                node.text.strip() if node.text else ""
+                for node in frequency_list.findall("frequency")
+            ]
+        preset = normalize_radio_preset(raw)
+        name_key = preset["name"].casefold()
+        if name_key in imported_names:
+            raise ValueError(f'The XML file contains duplicate preset name "{preset["name"]}"')
+        imported_names.add(name_key)
+        imported.append(preset)
+
+    global radio_presets
+    with RADIO_PRESETS_LOCK:
+        updated = [dict(item) for item in radio_presets]
+        added_count = 0
+        updated_count = 0
+        for preset in imported:
+            existing_index = next(
+                (
+                    index for index, item in enumerate(updated)
+                    if item["name"].casefold() == preset["name"].casefold()
+                ),
+                None,
+            )
+            if existing_index is not None:
+                preset["id"] = updated[existing_index]["id"]
+                updated[existing_index] = preset
+                updated_count += 1
+                continue
+
+            if len(updated) >= 200:
+                raise ValueError("Import would exceed the 200 preset limit")
+            if any(item["id"] == preset["id"] for item in updated):
+                preset["id"] = "preset-" + secrets.token_hex(8)
+            updated.append(preset)
+            added_count += 1
+
+        _write_radio_presets(updated)
+        radio_presets = updated
+        return {
+            "presets": [dict(item) for item in updated],
+            "added": added_count,
+            "updated": updated_count,
+        }
 
 def remove_radio_preset(preset_id: Any) -> list[dict[str, Any]]:
     global radio_presets
