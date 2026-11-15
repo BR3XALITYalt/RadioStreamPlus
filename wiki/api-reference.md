@@ -39,4 +39,4 @@ POST requests use a JSON object as the request body.
 
 JSON request bodies are limited to 64 KiB. Invalid input returns an HTTP error and a JSON object containing an `error` message. The API rejects cross-origin requests and requests addressed to hosts other than localhost or 127.0.0.1.
 
-This is an application-internal API. It is not designed as a public service contract and may change between project versions.
+These endpoints are used by the local RadioStream+ pages and are only available on the computer running the application. Endpoint details may change between releases.
