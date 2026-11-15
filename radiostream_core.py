@@ -144,6 +144,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     ),
     "directory_cache_minutes": 30,
     "openwebrx_receiverbook_enabled": True,
+    "openwebrx_custom_enabled": True,
 }
 
 MODE_DEFAULT_PASSBANDS: dict[str, tuple[int, int]] = {
@@ -353,8 +354,11 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
     base = dict(DEFAULT_CONFIG) if allow_partial else dict(config)
     base.update(raw)
     receiverbook_enabled = base.get("openwebrx_receiverbook_enabled", True)
+    custom_enabled = base.get("openwebrx_custom_enabled", True)
     if not isinstance(receiverbook_enabled, bool):
         raise ValueError("Receiverbook source setting must be true or false")
+    if not isinstance(custom_enabled, bool):
+        raise ValueError("Custom OpenWebRX source setting must be true or false")
     result = {
         "center_lat": clamp_number(base["center_lat"], "Latitude", -90, 90),
         "center_lon": clamp_number(base["center_lon"], "Longitude", -180, 180),
@@ -374,6 +378,7 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
         ),
         "directory_cache_minutes": 30,
         "openwebrx_receiverbook_enabled": receiverbook_enabled,
+        "openwebrx_custom_enabled": custom_enabled,
     }
     if result["mode"] not in VALID_MODES:
         raise ValueError("Mode must be AM, LSB, USB, CW, or NBFM")
@@ -966,7 +971,9 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
         receiverbook_records = []
         error = None
 
-    custom_records = get_custom_openwebrx_instances()
+    stored_custom_records = get_custom_openwebrx_instances()
+    custom_enabled = cfg.get("openwebrx_custom_enabled", True)
+    custom_records = stored_custom_records if custom_enabled else []
     custom_urls = {item["url"] for item in custom_records}
     records: list[tuple[dict[str, Any], str]] = [
         (item, "Receiverbook")
@@ -1023,6 +1030,7 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
         "receiverbook_count": len(receiverbook_records),
         "receiverbook_enabled": receiverbook_enabled,
         "custom_count": len(custom_records),
+        "custom_enabled": custom_enabled,
         "nearby_count": len(candidates),
         "found_count": len(found),
         "frequency_hz": frequency_hz,
