@@ -510,7 +510,7 @@ function showCurrent(state) {
   const frequency=config.frequency_khz;
   const frequencyCount=(config.frequencies_khz || [frequency]).length;
   $("frequency-current").textContent=Number.isFinite(Number(frequency))
-    ? `Currently tuned: ${formatFrequency(Number(frequency))} · ${frequencyCount} frequency${frequencyCount===1?"":"ies"} in shuffle`
+    ? `Currently tuned: ${formatFrequency(Number(frequency))} · ${frequencyCount} ${frequencyCount===1?"frequency":"frequencies"} in shuffle`
     : "Current frequency: waiting for receiver.";
   if(!current) {
     panel.innerHTML="<strong>No receiver selected</strong><span>No available station is currently selected. Try a larger range or another frequency.</span>";
