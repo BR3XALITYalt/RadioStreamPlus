@@ -47,7 +47,7 @@ Each message supports up to 800 characters and eight lines. Line breaks are pres
 
 ## Local data files
 
-These files are created in the application data directory when needed. When using the Python launcher, this is the application directory. The Windows executable uses `%LOCALAPPDATA%\\RadioStreamPlus\\data`, separate from its downloaded source files:
+These files are created in the application data directory when needed. By default, this is the application directory:
 
 | File | Contents |
 |---|---|
@@ -59,7 +59,7 @@ These files are created in the application data directory when needed. When usin
 | `radio_presets.json` | User-created frequency, mode, and passband presets |
 | `solar_xml_cache.xml` | Cached propagation feed |
 
-Settings, preferences, presets, custom receiver entries, and directory caches are stored locally. The automatic updater leaves these files intact. The Windows executable keeps its downloaded source and offline source archive under `%LOCALAPPDATA%\\RadioStreamPlus`, outside the data directory.
+Settings, preferences, presets, custom receiver entries, and directory caches are stored locally. The automatic updater leaves these files intact.
 
 ## Example configuration
 
