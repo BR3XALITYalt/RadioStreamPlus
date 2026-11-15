@@ -123,6 +123,9 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .map-legend-swatch.kiwi-available { border-color:#8ac9a3; background:#3e9664; }
 .map-legend-swatch.kiwi-unavailable { border-color:#a5a5a5; background:#777; }
 .map-legend-swatch.openwebrx { border-color:#8ec5ff; background:#397eb8; }
+.map-legend-swatch.active-receiver { display:grid; place-items:center; border-color:#111; background:#fff; color:#000; font-size:9px; font-weight:700; line-height:1; }
+.active-receiver-icon { border:0; background:transparent; }
+.active-receiver-x { display:grid; place-items:center; width:18px; height:18px; border:1.5px solid #111; border-radius:50%; background:#fff; color:#000; font:700 11px/1 Arial, sans-serif; box-shadow:0 0 0 1px rgba(255,255,255,.9),0 1px 4px rgba(0,0,0,.65); }
 @media (max-width:850px) { .layout { grid-template-columns:1fr; } #map { height:440px; } }
 @media (max-width:460px) { main { padding:10px; } header { padding:13px; } .field-grid { grid-template-columns:1fr; } .field.wide { grid-column:auto; } .frequency-row { grid-template-columns:minmax(0,1fr) 72px auto; } .custom-openwebrx-form { grid-template-columns:1fr; } .preset-row, .preset-save-row { grid-template-columns:1fr; } .preset-actions button { flex:1; } #map { height:360px; } }
 </style>
@@ -407,6 +410,7 @@ legend.onAdd = () => {
     <div class="map-legend-row"><span class="map-legend-swatch kiwi-available"></span><span>KiwiSDR · available</span></div>
     <div class="map-legend-row"><span class="map-legend-swatch kiwi-unavailable"></span><span>KiwiSDR · unavailable or blocked</span></div>
     <div class="map-legend-row"><span class="map-legend-swatch openwebrx"></span><span>OpenWebRX · public or custom</span></div>
+    <div class="map-legend-row"><span class="map-legend-swatch active-receiver">X</span><span>Currently in use</span></div>
   `;
   L.DomEvent.disableClickPropagation(container);
   L.DomEvent.disableScrollPropagation(container);
@@ -418,6 +422,7 @@ let center = {lat:20, lon:0};
 let centerMarker = L.marker([center.lat, center.lon], {draggable:true}).addTo(map);
 let radiusCircle = L.circle([center.lat, center.lon], {radius:500000, color:"#5ea7e8", weight:1.5, fillOpacity:.08}).addTo(map);
 let receiverMarkers = [];
+let activeReceiverMarker = null;
 let receiverItems = [];
 let openWebRXItems = [];
 let currentConfig = null;
@@ -513,6 +518,33 @@ async function saveSettings(showMessage=true) {
   if(showMessage) { $("save-status").textContent="Settings saved to radiostream.json."; $("save-status").className="status good"; }
 }
 function clearReceiverMarkers() { receiverMarkers.forEach(marker=>map.removeLayer(marker)); receiverMarkers=[]; }
+function updateActiveReceiverMarker(current) {
+  const lat=Number(current?.lat);
+  const lon=Number(current?.lon);
+  if(!current || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    if(activeReceiverMarker) map.removeLayer(activeReceiverMarker);
+    activeReceiverMarker=null;
+    return;
+  }
+  if(!activeReceiverMarker) {
+    activeReceiverMarker=L.marker([lat,lon],{
+      pane:"markerPane",
+      zIndexOffset:10000,
+      interactive:false,
+      keyboard:false,
+      icon:L.divIcon({
+        className:"active-receiver-icon",
+        html:'<span class="active-receiver-x" aria-hidden="true">X</span>',
+        iconSize:[18,18],
+        iconAnchor:[9,9]
+      })
+    }).addTo(map);
+  } else {
+    activeReceiverMarker.setLatLng([lat,lon]);
+    activeReceiverMarker.setZIndexOffset(10000);
+    if(!map.hasLayer(activeReceiverMarker)) activeReceiverMarker.addTo(map);
+  }
+}
 function createPreferenceControls(item) {
   const controls = document.createElement("div");
   controls.className = "receiver-preferences";
@@ -559,6 +591,7 @@ async function selectReceiver(id) {
 }
 function showCurrent(state) {
   const current=state?.current;
+  updateActiveReceiverMarker(current);
   const panel=$("current");
   if(state?.config) currentConfig=state.config;
   const config=currentConfig || {};
