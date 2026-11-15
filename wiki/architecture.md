@@ -2,7 +2,7 @@
 
 **Navigation:** [Wiki home](main.md) · [Development](development.md) · [API Reference](api-reference.md) · [Privacy](privacy.md)
 
-RadioStream+ is a small Python application with a browser-based management interface, a KiwiSDR player, and an OBS overlay.
+RadioStream+ supplies the receiver side of a radio livestream production setup. Its local Python server manages KiwiSDR selection and automatic rotation, serves the SDR player and information overlay as browser sources, and exposes a management interface for configuring the feed. OBS captures those sources, combines them into a scene, and handles encoding and delivery to the streaming platform.
 
 ## Components
 
