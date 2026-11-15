@@ -13,12 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  test-and-release:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -27,49 +29,8 @@ jobs:
 
       - name: Check Python files
         run: |
-          python -m compileall -q radiostream_bootstrap.py radiostream.py radiostream_core.py radiostream_server.py
+          python -m compileall -q radiostream.py radiostream_core.py radiostream_server.py
           python -m unittest discover -s tests -v
-
-      - name: Build executable
-        run: |
-          python -m pip install --disable-pip-version-check pyinstaller
-          python -m PyInstaller --noconfirm --clean --onefile --console --name RadioStreamPlus --collect-all xml --hidden-import xml --hidden-import xml.etree --hidden-import xml.etree.ElementPath --hidden-import xml.etree.ElementTree --hidden-import xml.parsers --hidden-import xml.parsers.expat --hidden-import pyexpat radiostream_bootstrap.py
-
-      - name: Upload Windows executable
-        uses: actions/upload-artifact@v7
-        with:
-          name: RadioStreamPlus-Windows
-          path: dist/RadioStreamPlus.exe
-          archive: true
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Publish Nightly download link
-        shell: pwsh
-        run: |
-          @"
-          ## Nightly Windows build
-
-          [Download the latest RadioStream+ Windows build](https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease/main/RadioStreamPlus-Windows.zip)
-
-          The download is a ZIP containing `RadioStreamPlus.exe`.
-          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-
-  update-prerelease:
-    needs: build-windows
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out latest commit
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Download Windows executable
-        uses: actions/download-artifact@v8
-        with:
-          name: RadioStreamPlus-Windows
-          path: release-assets
 
       - name: Package source
         run: |
@@ -89,13 +50,9 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Continuous pre-release
 
-          This pre-release is updated automatically whenever a commit is pushed to `main`.
+          This source release is updated automatically whenever a commit is pushed to `main`.
 
-          You probably do not need to install this pre-release if RadioStream+ is already updating normally. Use it for a manual or offline installation, or when the automatic updater is unavailable or has failed.
-
-          The release includes the current source archive and an experimental Windows x64 executable. The executable downloads the current source when online and can use its cached source when GitHub is unavailable.
-
-          The latest Windows executable is also available through [nightly.link](https://nightly.link/BR3XALITYalt/RadioStreamPlus/workflows/continuous-prerelease/main/RadioStreamPlus-Windows.zip).
+          Download the source ZIP, extract it, install Python 3.10 or newer, and follow the setup instructions in README.md.
 
           If something goes wrong, report it in [GitHub Issues](https://github.com/BR3XALITYalt/RadioStreamPlus/issues).
 
@@ -122,6 +79,5 @@ jobs:
 
           gh release upload continuous \
             RadioStreamPlus-prerelease.zip \
-            release-assets/RadioStreamPlus.exe \
             --repo "$REPOSITORY" \
             --clobber
