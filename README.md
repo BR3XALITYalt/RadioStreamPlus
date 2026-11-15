@@ -136,4 +136,3 @@ The inherited UVB-76 overlay artwork and information-panel material retain the U
 
 This change applies to the current version and future releases. Previously published versions remain under the licenses that accompanied them; changing the current license does not retroactively revoke permissions granted for older releases.
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for upstream attribution and third-party licensing details.
