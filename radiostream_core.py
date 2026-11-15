@@ -664,9 +664,13 @@ def save_radio_preset(raw: Any) -> list[dict[str, Any]]:
         return [dict(item) for item in updated]
 
 
+RADIO_PRESET_XML_VERSION = 2
+FULL_BACKUP_XML_VERSION = 2
+
+
 def export_radio_presets_xml() -> bytes:
     """Export presets in the versioned RadioStream+ XML format."""
-    root = ET.Element("radio-stream-presets", {"version": "1"})
+    root = ET.Element("radio-stream-presets", {"version": str(RADIO_PRESET_XML_VERSION)})
     for item in get_radio_presets():
         entry = ET.SubElement(root, "preset", {"id": item["id"]})
         ET.SubElement(entry, "name").text = item["name"]
@@ -706,7 +710,7 @@ def import_radio_presets_xml(xml_text: str) -> dict[str, Any]:
     if root.tag != "radio-stream-presets":
         raise ValueError("The XML root must be <radio-stream-presets>")
     version = root.get("version")
-    if version != "1":
+    if version not in {"1", str(RADIO_PRESET_XML_VERSION)}:
         raise ValueError(f"Unsupported preset XML version: {version or 'missing'}")
 
     entries = root.findall("preset")
@@ -719,6 +723,17 @@ def import_radio_presets_xml(xml_text: str) -> dict[str, Any]:
         def field(name: str) -> str | None:
             node = entry.find(name)
             return node.text.strip() if node is not None and node.text else None
+
+        if version == str(RADIO_PRESET_XML_VERSION):
+            required_map_fields = ("center-lat", "center-lon", "radius-km")
+            missing_map_fields = [
+                name for name in required_map_fields if field(name) is None
+            ]
+            if missing_map_fields:
+                raise ValueError(
+                    "Preset XML version 2 is missing required map fields: "
+                    + ", ".join(missing_map_fields)
+                )
 
         raw: dict[str, Any] = {
             "id": entry.get("id"),
@@ -863,7 +878,7 @@ def export_all_data_xml() -> bytes:
             "station_preferences": copy.deepcopy(station_preferences),
         }
 
-    root = ET.Element("radiostream-plus-backup", {"version": "1"})
+    root = ET.Element("radiostream-plus-backup", {"version": str(FULL_BACKUP_XML_VERSION)})
     for section_name, value in snapshot.items():
         section = ET.SubElement(root, section_name)
         _xml_write_value(section, value)
@@ -939,7 +954,7 @@ def import_all_data_xml(xml_text: str) -> dict[str, int]:
     if root.tag != "radiostream-plus-backup":
         raise ValueError("The XML root must be <radiostream-plus-backup>")
     version = root.get("version")
-    if version != "1":
+    if version not in {"1", str(FULL_BACKUP_XML_VERSION)}:
         raise ValueError(f"Unsupported full-backup XML version: {version or 'missing'}")
 
     expected_sections = {
