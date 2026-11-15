@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Opening OpenWebRX - RadioStream+</title>
+<style>
+:root { color-scheme:dark; font-family:Arial,Helvetica,sans-serif; background:#101214; color:#edf0f2; }
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; padding:20px; }
+main { width:min(560px,100%); padding:22px; border:1px solid #30383e; border-radius:7px; background:#191e22; }
+h1 { margin:0 0 12px; font-size:20px; }
+p { color:#c2cbd1; font-size:13px; line-height:1.55; }
+#status { color:#edf0f2; }
+a { color:#79b8ff; }
+small { display:block; margin-top:20px; color:#87939b; line-height:1.5; }
+</style>
+</head>
+<body>
+<main>
+<h1>Opening OpenWebRX</h1>
+<p id="status" role="status" aria-live="polite">Checking the receiver's available profiles...</p>
+<p id="detail"></p>
+<p id="fallback" hidden><a id="fallback-link" href="#">Open without switching profiles</a></p>
+<small>Changing an OpenWebRX+ profile can change the active frequency range for other listeners using the same SDR.</small>
+</main>
+<script>
+(() => {
+  const status = document.getElementById("status");
+  const detail = document.getElementById("detail");
+  const fallback = document.getElementById("fallback");
+  const fallbackLink = document.getElementById("fallback-link");
+  const params = new URLSearchParams(window.location.search);
+
+  let receiver;
+  let targetUrl;
+  let requestedProfiles;
+  const frequencyHz = Number(params.get("frequency_hz"));
+  const mode = String(params.get("mode") || "usb").toLowerCase();
+
+  try {
+    receiver = new URL(params.get("url") || "");
+    if (!["http:", "https:"].includes(receiver.protocol) ||
+        receiver.username || receiver.password ||
+        !receiver.hostname ||
+        receiver.hostname === "localhost" ||
+        receiver.hostname.endsWith(".localhost") ||
+        receiver.hostname.endsWith(".local")) {
+      throw new Error("The receiver address is invalid.");
+    }
+    if (!receiver.pathname.endsWith("/")) receiver.pathname += "/";
+    if (!Number.isFinite(frequencyHz) || frequencyHz <= 0 ||
+        !/^[a-z0-9_-]{1,16}$/.test(mode)) {
+      throw new Error("The requested frequency or mode is invalid.");
+    }
+    requestedProfiles = JSON.parse(params.get("profiles") || "[]");
+    if (!Array.isArray(requestedProfiles) ||
+        requestedProfiles.length > 128 ||
+        requestedProfiles.some(name => typeof name !== "string" || !name.trim())) {
+      throw new Error("The profile list is invalid.");
+    }
+    targetUrl = new URL(receiver.href);
+    targetUrl.hash = "freq=" + Math.round(frequencyHz) + ",mod=" + mode;
+  } catch (error) {
+    status.textContent = error.message || "The receiver address is invalid.";
+    return;
+  }
+
+  fallbackLink.href = targetUrl.href;
+
+  function openWithoutSwitching(message) {
+    status.textContent = message;
+    detail.textContent = "The receiver can still be opened, but it may stay on a different profile.";
+    fallback.hidden = false;
+  }
+
+  if (!requestedProfiles.length) {
+    window.location.replace(targetUrl.href);
+    return;
+  }
+
+  const wsUrl = new URL("ws/", receiver.href);
+  wsUrl.protocol = receiver.protocol === "https:" ? "wss:" : "ws:";
+  status.textContent = "Connecting to the receiver to select a matching profile...";
+
+  let socket;
+  let selectedProfileId = "";
+  let selectedProfileName = "";
+  let activeProfileId = "";
+  let redirected = false;
+  let failed = false;
+
+  function finishSelection() {
+    if (redirected || !selectedProfileId || activeProfileId !== selectedProfileId) return;
+    redirected = true;
+    status.textContent = "Selected " + selectedProfileName + ". Opening the receiver...";
+    detail.textContent = "Tuning to " + (frequencyHz / 1000000).toFixed(6).replace(/0+$/, "").replace(/\.$/, "") +
+      " MHz in " + mode.toUpperCase() + " mode.";
+    try { socket.close(); } catch (_) {}
+    window.setTimeout(() => window.location.replace(targetUrl.href), 150);
+  }
+
+  try {
+    socket = new WebSocket(wsUrl.href);
+  } catch (error) {
+    openWithoutSwitching("Could not connect to the receiver's profile service.");
+    return;
+  }
+
+  const timeout = window.setTimeout(() => {
+    if (!redirected && !failed) {
+      failed = true;
+      try { socket.close(); } catch (_) {}
+      openWithoutSwitching("The receiver did not confirm the profile change. It may be offline, full, or have the profile locked.");
+    }
+  }, 12000);
+
+  socket.onopen = () => {
+    socket.send("SERVER DE CLIENT client=openwebrx.js type=receiver");
+    socket.send(JSON.stringify({
+      type: "connectionproperties",
+      params: {output_rate:48000, hd_output_rate:48000}
+    }));
+    status.textContent = "Reading available profiles...";
+  };
+
+  socket.onmessage = event => {
+    if (typeof event.data !== "string") return;
+    let message;
+    try { message = JSON.parse(event.data); } catch (_) { return; }
+    if (!message || typeof message !== "object") return;
+
+    if (message.type === "config" && message.value && typeof message.value === "object") {
+      const value = message.value;
+      if (value.sdr_id && value.profile_id) {
+        activeProfileId = String(value.sdr_id) + "|" + String(value.profile_id);
+        finishSelection();
+      }
+      return;
+    }
+
+    if (message.type !== "profiles" || !Array.isArray(message.value)) return;
+    const available = message.value.filter(item =>
+      item && typeof item.id === "string" && typeof item.name === "string"
+    );
+
+    let match = null;
+    for (const wantedName of requestedProfiles) {
+      match = available.find(item => item.name === wantedName) || null;
+      if (match) break;
+    }
+
+    if (!match) {
+      failed = true;
+      window.clearTimeout(timeout);
+      try { socket.close(); } catch (_) {}
+      openWithoutSwitching("No advertised profile matched the frequency range detected by RadioStream+.");
+      return;
+    }
+
+    selectedProfileId = match.id;
+    selectedProfileName = match.name;
+    detail.textContent = "Matching profile: " + match.name;
+
+    if (activeProfileId === selectedProfileId) {
+      finishSelection();
+      return;
+    }
+
+    status.textContent = "Selecting the matching profile...";
+    socket.send(JSON.stringify({
+      type: "selectprofile",
+      params: {profile:selectedProfileId}
+    }));
+  };
+
+  socket.onerror = () => {
+    if (redirected || failed) return;
+    failed = true;
+    window.clearTimeout(timeout);
+    openWithoutSwitching("The receiver's profile connection was blocked or failed.");
+  };
+
+  socket.onclose = () => {
+    if (redirected || failed) return;
+    failed = true;
+    window.clearTimeout(timeout);
+    openWithoutSwitching("The receiver closed the profile connection before confirming the change.");
+  };
+})();
+</script>
+</body>
+</html>
