@@ -5,6 +5,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import radiostream_core as rs
+import radiostream_server as rss
 
 
 class RadioStreamTests(unittest.TestCase):
@@ -91,8 +92,37 @@ class RadioStreamTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rs.validate_config({"frequency_khz": 300000001})
 
-    def test_frequency_links_select_the_active_tuning_frequency(self):
+    def test_frequency_list_is_preserved_and_first_frequency_starts_active(self):
         validated = rs.validate_config({
+            "frequencies_khz": [2500, 5000, 10000],
+            "frequency_khz": 2500,
+        })
+        self.assertEqual(validated["frequencies_khz"], [2500, 5000, 10000])
+        self.assertEqual(validated["frequency_khz"], 2500)
+
+        url = rs.make_tune_url(
+            {"url": "http://kiwi.example.test:8073"},
+            validated,
+        )
+        self.assertEqual(parse_qs(urlsplit(url).query)["f"], ["2500usbz11"])
+
+    def test_frequency_validation_rejects_empty_duplicate_and_oversized_lists(self):
+        with self.assertRaises(ValueError):
+            rs.validate_config({"frequencies_khz": []})
+        with self.assertRaises(ValueError):
+            rs.validate_config({"frequencies_khz": [4625, 4625]})
+        with self.assertRaises(ValueError):
+            rs.validate_config({"frequencies_khz": [0]})
+        with self.assertRaises(ValueError):
+            rs.validate_config({
+                "frequencies_khz": [
+                    1000 + index for index in range(rs.MAX_FREQUENCIES + 1)
+                ],
+            })
+
+    def test_legacy_named_frequency_links_migrate_to_numeric_frequencies(self):
+        validated = rs.validate_config({
+            "frequency_khz": 10000,
             "frequency_links": [
                 {"name": "WWV 2.5 MHz", "frequency_khz": 2500},
                 {"name": "WWV 5 MHz", "frequency_khz": 5000},
@@ -100,52 +130,46 @@ class RadioStreamTests(unittest.TestCase):
             ],
             "active_frequency_index": 2,
         })
-        self.assertEqual(validated["active_frequency_index"], 2)
+        self.assertEqual(validated["frequencies_khz"], [2500, 5000, 10000])
         self.assertEqual(validated["frequency_khz"], 10000)
-        self.assertEqual(validated["frequency_links"][0]["name"], "WWV 2.5 MHz")
-        self.assertEqual(validated["frequency_links"][1]["frequency_khz"], 5000)
+        self.assertNotIn("frequency_links", validated)
+        self.assertNotIn("active_frequency_index", validated)
 
-        url = rs.make_tune_url(
-            {"url": "http://kiwi.example.test:8073"},
-            validated,
-        )
-        self.assertEqual(parse_qs(urlsplit(url).query)["f"], ["10000usbz11"])
-
-    def test_legacy_frequency_updates_the_active_link(self):
-        previous_config = rs.config
-        self.addCleanup(lambda: setattr(rs, "config", previous_config))
-        rs.config = {
-            **rs.DEFAULT_CONFIG,
-            "frequency_links": [
-                {"name": "WWV 5 MHz", "frequency_khz": 5000},
-                {"name": "WWV 10 MHz", "frequency_khz": 10000},
-            ],
-            "active_frequency_index": 1,
-        }
+    def test_legacy_single_frequency_setting_remains_supported(self):
         validated = rs.validate_config({"frequency_khz": 15000})
+        self.assertEqual(validated["frequencies_khz"], [15000])
         self.assertEqual(validated["frequency_khz"], 15000)
-        self.assertEqual(validated["frequency_links"][0]["frequency_khz"], 5000)
-        self.assertEqual(validated["frequency_links"][1]["frequency_khz"], 15000)
 
-    def test_frequency_link_validation_rejects_invalid_lists(self):
-        with self.assertRaises(ValueError):
-            rs.validate_config({"frequency_links": []})
-        with self.assertRaises(ValueError):
-            rs.validate_config({
-                "frequency_links": [{"name": "Invalid", "frequency_khz": 0}],
-            })
-        with self.assertRaises(ValueError):
-            rs.validate_config({
-                "frequency_links": [{"name": "Primary", "frequency_khz": 4625}],
-                "active_frequency_index": 1,
-            })
-        with self.assertRaises(ValueError):
-            rs.validate_config({
-                "frequency_links": [
-                    {"name": f"Link {index}", "frequency_khz": 4625}
-                    for index in range(rs.MAX_FREQUENCY_LINKS + 1)
-                ],
-            })
+    def test_frequency_shuffle_visits_each_frequency_before_repeating(self):
+        frequencies = [2500.0, 5000.0, 10000.0, 15000.0]
+        current = frequencies[0]
+        remaining = frequencies[1:]
+        visited = [current]
+
+        for _ in range(len(frequencies) - 1):
+            current, remaining = rss.take_next_frequency(
+                frequencies,
+                current,
+                remaining,
+            )
+            self.assertIsNotNone(current)
+            visited.append(current)
+
+        self.assertEqual(set(visited), set(frequencies))
+        self.assertEqual(len(visited), len(set(visited)))
+
+        next_frequency, remaining = rss.take_next_frequency(
+            frequencies,
+            current,
+            remaining,
+        )
+        self.assertNotEqual(next_frequency, current)
+        self.assertIn(next_frequency, frequencies)
+
+    def test_frequency_shuffle_handles_single_frequency(self):
+        next_frequency, remaining = rss.take_next_frequency([4625.0], 4625.0, [])
+        self.assertIsNone(next_frequency)
+        self.assertEqual(remaining, [])
 
     def test_overlay_message_defaults_match_current_artwork(self):
         self.assertIn("Every ${M} minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
