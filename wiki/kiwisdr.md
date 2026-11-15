@@ -2,7 +2,9 @@
 
 **Navigation:** [Wiki home](main.md) · [Receiver Discovery](receiver-discovery.md) · [Management Page](management.md) · [Radio Presets](radio-presets.md)
 
-KiwiSDR receivers are the primary playback source for RadioStream+. The local SDR player embeds the selected receiver and follows the server's automatic rotation.
+KiwiSDR receivers are the primary live audio and picture source for RadioStream+. The local SDR player embeds the selected receiver and follows the server's automatic rotation. This is the core of a continuous radio-monitoring livestream: RadioStream+ keeps the receiver feed tuned and can move it between eligible public KiwiSDRs, while OBS captures the player and broadcasts the finished scene.
+
+For the complete setup, see [Getting Started](getting-started.md) and [OBS Setup](obs-overlay.md).
 
 ## Selecting a receiver
 
@@ -15,7 +17,7 @@ The server rechecks the selected receiver before switching to it. A receiver can
 
 ## Automatic rotation
 
-The rotation interval controls how long RadioStream+ stays on a receiver before selecting another one. The interval can be set from 3 to 60 minutes.
+Automatic rotation is intended to keep a long-running monitoring stream supplied with receivers without requiring someone to manually switch stations. The rotation interval controls how long RadioStream+ stays on a receiver before selecting another one. The interval can be set from 3 to 60 minutes.
 
 Receiver ordering uses the directory's published quality and occupancy information, applies the user's station preferences, and avoids recently used receivers where possible. It is a weighted selection process, not a fixed ranking.
 
