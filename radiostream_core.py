@@ -464,7 +464,7 @@ def validate_radio_presets(payload: Any) -> list[dict[str, Any]]:
 
 
 def _write_radio_presets(presets: list[dict[str, Any]]) -> None:
-    payload = json.dumps({"schema": 1, "presets": presets}, ensure_ascii=False, indent=2) + "\\n"
+    payload = json.dumps({"schema": 1, "presets": presets}, ensure_ascii=False, indent=2) + "\n"
     try:
         temporary = RADIO_PRESETS_PATH.with_suffix(".json.tmp")
         temporary.write_text(payload, encoding="utf-8")
