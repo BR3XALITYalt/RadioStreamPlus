@@ -40,13 +40,16 @@ CONFIG_PATH = APP_DIR / "radiostream.json"
 DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
 STATION_PREFERENCES_PATH = APP_DIR / "station_preferences.json"
 RECEIVERBOOK_CACHE_PATH = APP_DIR / "receiverbook_cache.json"
+OPENWEBRX_CUSTOM_PATH = APP_DIR / "openwebrx_custom.json"
 STATION_PREFERENCES_LOCK = threading.RLock()
+OPENWEBRX_CUSTOM_LOCK = threading.RLock()
 station_preferences: dict[str, str] = {}
 RECEIVERBOOK_LOCK = threading.RLock()
 receiverbook_data: list[dict[str, Any]] | None = None
 receiverbook_fetched_monotonic = 0.0
 receiverbook_fetched_at: str | None = None
 receiverbook_error: str | None = None
+openwebrx_custom_data: list[dict[str, Any]] = []
 
 
 def load_station_preferences() -> None:
@@ -140,6 +143,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "the next reload."
     ),
     "directory_cache_minutes": 30,
+    "openwebrx_receiverbook_enabled": True,
 }
 
 MODE_DEFAULT_PASSBANDS: dict[str, tuple[int, int]] = {
@@ -348,6 +352,9 @@ def validate_overlay_text(value: Any, name: str) -> str:
 def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[str, Any]:
     base = dict(DEFAULT_CONFIG) if allow_partial else dict(config)
     base.update(raw)
+    receiverbook_enabled = base.get("openwebrx_receiverbook_enabled", True)
+    if not isinstance(receiverbook_enabled, bool):
+        raise ValueError("Receiverbook source setting must be true or false")
     result = {
         "center_lat": clamp_number(base["center_lat"], "Latitude", -90, 90),
         "center_lon": clamp_number(base["center_lon"], "Longitude", -180, 180),
@@ -366,6 +373,7 @@ def validate_config(raw: dict[str, Any], allow_partial: bool = False) -> dict[st
             base["overlay_black_notice"], "Overlay black-screen notice"
         ),
         "directory_cache_minutes": 30,
+        "openwebrx_receiverbook_enabled": receiverbook_enabled,
     }
     if result["mode"] not in VALID_MODES:
         raise ValueError("Mode must be AM, LSB, USB, CW, or NBFM")
@@ -523,6 +531,161 @@ def validate_receiverbook_cache(payload: Any) -> list[dict[str, Any]]:
                 cleaned_item["frequency_checked_at"] = checked_at
         cleaned.append(cleaned_item)
     return cleaned
+
+
+def normalize_custom_openwebrx_instance(item: Any) -> dict[str, Any]:
+    """Validate a user-managed OpenWebRX entry and normalize its public URL/location."""
+    if not isinstance(item, dict):
+        raise ValueError("OpenWebRX instance must be an object")
+    url = normalize_receiverbook_url(item.get("url"))
+    if not url:
+        raise ValueError("Enter a valid public HTTP or HTTPS OpenWebRX URL")
+    try:
+        lat = float(item.get("lat"))
+        lon = float(item.get("lon"))
+    except (TypeError, ValueError):
+        raise ValueError("Latitude and longitude must be numbers")
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        raise ValueError("Latitude and longitude must be finite numbers")
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError("Latitude must be between -90 and 90 and longitude between -180 and 180")
+    if abs(lat) < 1e-9 and abs(lon) < 1e-9:
+        raise ValueError("The map location cannot be 0, 0")
+    hostname = urllib.parse.urlsplit(url).hostname or "OpenWebRX"
+    name = str(item.get("name") or hostname).strip()[:160] or hostname
+    cleaned: dict[str, Any] = {
+        "id": "custom:" + url,
+        "name": name,
+        "station": "",
+        "version": str(item.get("version") or "")[:80],
+        "type": "openwebrx",
+        "url": url,
+        "lat": lat,
+        "lon": lon,
+    }
+    raw_ranges = item.get("frequency_ranges")
+    checked_at = item.get("frequency_checked_at")
+    if isinstance(raw_ranges, list) and len(raw_ranges) <= 4096:
+        ranges: list[dict[str, float]] = []
+        for band in raw_ranges:
+            if not isinstance(band, dict):
+                continue
+            try:
+                low_hz = float(band.get("low_hz"))
+                high_hz = float(band.get("high_hz"))
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(low_hz) and math.isfinite(high_hz) and 0 <= low_hz < high_hz:
+                ranges.append({"low_hz": low_hz, "high_hz": high_hz})
+        try:
+            checked_at = float(checked_at)
+        except (TypeError, ValueError):
+            checked_at = None
+        if checked_at is not None and math.isfinite(checked_at) and checked_at > 0:
+            cleaned["frequency_ranges"] = ranges
+            cleaned["frequency_checked_at"] = checked_at
+    return cleaned
+
+
+def validate_custom_openwebrx(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict) or payload.get("schema") != 1:
+        raise ValueError("Custom OpenWebRX file has an unsupported schema")
+    entries = payload.get("instances")
+    if not isinstance(entries, list) or len(entries) > 500:
+        raise ValueError("Custom OpenWebRX file has an invalid instance list")
+    cleaned: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        try:
+            item = normalize_custom_openwebrx_instance(entry)
+        except ValueError:
+            continue
+        if item["url"] in seen:
+            continue
+        seen.add(item["url"])
+        cleaned.append(item)
+    return cleaned
+
+
+def _write_custom_openwebrx(instances: list[dict[str, Any]]) -> None:
+    payload = json.dumps({"schema": 1, "instances": instances}, ensure_ascii=False, indent=2) + "\n"
+    try:
+        temporary = OPENWEBRX_CUSTOM_PATH.with_suffix(".json.tmp")
+        temporary.write_text(payload, encoding="utf-8")
+        temporary.replace(OPENWEBRX_CUSTOM_PATH)
+    except OSError as exc:
+        raise RuntimeError(f"Could not save custom OpenWebRX instances: {exc}") from exc
+
+
+def load_custom_openwebrx_instances() -> None:
+    global openwebrx_custom_data
+    try:
+        payload = json.loads(OPENWEBRX_CUSTOM_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        with OPENWEBRX_CUSTOM_LOCK:
+            openwebrx_custom_data = []
+        return
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[openwebrx] Could not load custom instances: {exc}", file=sys.stderr)
+        return
+    try:
+        cleaned = validate_custom_openwebrx(payload)
+    except ValueError as exc:
+        print(f"[openwebrx] Ignoring invalid custom instance file: {exc}", file=sys.stderr)
+        return
+    with OPENWEBRX_CUSTOM_LOCK:
+        openwebrx_custom_data = cleaned
+
+
+def get_custom_openwebrx_instances() -> list[dict[str, Any]]:
+    with OPENWEBRX_CUSTOM_LOCK:
+        return [dict(item) for item in openwebrx_custom_data]
+
+
+def save_custom_openwebrx_frequency_cache() -> None:
+    with OPENWEBRX_CUSTOM_LOCK:
+        try:
+            _write_custom_openwebrx(openwebrx_custom_data)
+        except RuntimeError as exc:
+            print(f"[openwebrx] {exc}", file=sys.stderr)
+
+
+def add_custom_openwebrx_instance(raw: Any) -> list[dict[str, Any]]:
+    global openwebrx_custom_data
+    item = normalize_custom_openwebrx_instance(raw)
+    with OPENWEBRX_CUSTOM_LOCK:
+        updated = [dict(entry) for entry in openwebrx_custom_data]
+        existing_index = next(
+            (index for index, entry in enumerate(updated) if entry["url"] == item["url"]),
+            None,
+        )
+        if existing_index is not None:
+            previous = updated[existing_index]
+            if "frequency_checked_at" in previous:
+                item["frequency_ranges"] = previous.get("frequency_ranges", [])
+                item["frequency_checked_at"] = previous["frequency_checked_at"]
+            updated[existing_index] = item
+        else:
+            if len(updated) >= 500:
+                raise ValueError("The custom OpenWebRX list is full (500 instances)")
+            updated.append(item)
+        _write_custom_openwebrx(updated)
+        openwebrx_custom_data = updated
+        return [dict(entry) for entry in updated]
+
+
+def remove_custom_openwebrx_instance(instance_id: Any) -> list[dict[str, Any]]:
+    global openwebrx_custom_data
+    wanted = str(instance_id or "").strip()
+    if not wanted:
+        raise ValueError("A custom OpenWebRX instance ID is required")
+    with OPENWEBRX_CUSTOM_LOCK:
+        updated = [dict(entry) for entry in openwebrx_custom_data if entry["id"] != wanted]
+        if len(updated) == len(openwebrx_custom_data):
+            raise ValueError("That custom OpenWebRX instance was not found")
+        _write_custom_openwebrx(updated)
+        openwebrx_custom_data = updated
+        return [dict(entry) for entry in updated]
 
 
 def parse_receiverbook_map(body: str) -> list[dict[str, Any]]:
@@ -776,40 +939,52 @@ def make_openwebrx_url(receiver: dict[str, Any], cfg: dict[str, Any]) -> str:
 
 
 def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    try:
-        records = fetch_receiverbook_directory(force=force)
-    except RuntimeError as exc:
-        records = receiverbook_data or []
-        if receiverbook_error is None:
-            error = str(exc)
-        else:
-            error = receiverbook_error
-    else:
-        error = receiverbook_error
     with CONFIG_LOCK:
         cfg = dict(config)
 
-    candidates: list[tuple[dict[str, Any], float]] = []
-    for item in records:
+    receiverbook_enabled = cfg.get("openwebrx_receiverbook_enabled", True)
+    if receiverbook_enabled:
+        try:
+            receiverbook_records = fetch_receiverbook_directory(force=force)
+        except RuntimeError as exc:
+            receiverbook_records = receiverbook_data or []
+            error = receiverbook_error or str(exc)
+        else:
+            error = receiverbook_error
+    else:
+        receiverbook_records = []
+        error = None
+
+    custom_records = get_custom_openwebrx_instances()
+    custom_urls = {item["url"] for item in custom_records}
+    records: list[tuple[dict[str, Any], str]] = [
+        (item, "Receiverbook")
+        for item in receiverbook_records
+        if item.get("url") not in custom_urls
+    ]
+    records.extend((item, "Custom") for item in custom_records)
+
+    candidates: list[tuple[dict[str, Any], float, str]] = []
+    for item, source in records:
         distance = haversine_km(cfg["center_lat"], cfg["center_lon"], item["lat"], item["lon"])
         if distance <= cfg["radius_km"]:
-            candidates.append((item, distance))
+            candidates.append((item, distance, source))
 
     if candidates:
         with ThreadPoolExecutor(max_workers=OPENWEBRX_BAND_PROBE_WORKERS) as executor:
             futures = [
                 executor.submit(fetch_openwebrx_frequency_ranges, item)
-                for item, _distance in candidates
+                for item, _distance, _source in candidates
             ]
             for future in as_completed(futures):
                 try:
                     future.result()
                 except Exception as exc:
-                    print(f"[receiverbook] Could not read receiver frequency range: {exc}", file=sys.stderr)
+                    print(f"[openwebrx] Could not read receiver frequency range: {exc}", file=sys.stderr)
 
     frequency_hz = round(float(cfg["frequency_khz"]) * 1000)
     found: list[dict[str, Any]] = []
-    for item, distance in candidates:
+    for item, distance, source in candidates:
         ranges = item.get("frequency_ranges") or []
         frequency_supported = any(
             band["low_hz"] <= frequency_hz <= band["high_hz"]
@@ -820,23 +995,29 @@ def discover_openwebrx(force: bool = False) -> tuple[list[dict[str, Any]], dict[
         found.append({
             **item,
             "distance_km": round(distance, 1),
-            "source": "Receiverbook",
-            "listed_online": True,
+            "source": source,
+            "listed_online": source == "Receiverbook",
             "frequency_supported": True,
             "tune_url": make_openwebrx_url(item, cfg),
         })
 
-    if candidates:
+    if any(source == "Receiverbook" for _item, _distance, source in candidates):
         save_receiverbook_cache()
+    if any(source == "Custom" for _item, _distance, source in candidates):
+        save_custom_openwebrx_frequency_cache()
+
     found.sort(key=lambda item: (item["distance_km"], item["name"].casefold()))
     meta = {
-        "directory_count": len(records),
+        "directory_count": len(receiverbook_records) + len(custom_records),
+        "receiverbook_count": len(receiverbook_records),
+        "receiverbook_enabled": receiverbook_enabled,
+        "custom_count": len(custom_records),
         "nearby_count": len(candidates),
         "found_count": len(found),
         "frequency_hz": frequency_hz,
-        "fetched_at": receiverbook_fetched_at,
+        "fetched_at": receiverbook_fetched_at if receiverbook_enabled else None,
         "cache_error": error,
-        "directory_url": RECEIVERBOOK_MAP_URL,
+        "directory_url": RECEIVERBOOK_MAP_URL if receiverbook_enabled else None,
     }
     return found, meta
 
