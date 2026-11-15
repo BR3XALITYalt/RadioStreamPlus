@@ -6,7 +6,7 @@ The overlay artwork and original information panel were adapted from [chfour/uvb
 
 ## Kiwi-Reload
 
-[noaa-apt/kiwi-reload](https://github.com/noaa-apt/kiwi-reload) is licensed under GPL-3.0 and provided a reference for automatic KiwiSDR receiver rotation, receiver status ranking, and frequency/receiver settings. RadioStream+ currently implements its own local server and receiver-selection logic; it does not copy or bundle Kiwi-Reload source files. If source code from Kiwi-Reload is incorporated in a future version, its copyright and license notices must be preserved and the combined work distributed in compliance with GPL-3.0.
+[noaa-apt/kiwi-reload](https://github.com/noaa-apt/kiwi-reload) is licensed under GPL-3.0 and was consulted as a reference for KiwiSDR receiver rotation, receiver ranking, and tuning settings. No Kiwi-Reload source code is included in RadioStream+.
 
 ## KiwiSDR public receiver directory
 
@@ -19,4 +19,4 @@ The management page uses [Leaflet](https://leafletjs.com/) and [OpenStreetMap](h
 
 ## Receiverbook public directory
 
-OpenWebRX discovery reads public listing data from [Receiverbook](https://www.receiverbook.de/) using its [OpenWebRX map page](https://www.receiverbook.de/map?type=openwebrx). RadioStream+ consumes the published receiver records as directory data and does not copy or bundle Receiverbook source code. Listed receiver URLs are opened directly by the user.
+OpenWebRX discovery reads public listings from [Receiverbook](https://www.receiverbook.de/) using its [OpenWebRX map page](https://www.receiverbook.de/map?type=openwebrx). Receiver links open directly in the browser.
