@@ -4,7 +4,7 @@
 
 Radio presets are named tuning profiles. They let you switch between regularly monitored signals without re-entering the frequency, demodulation mode, and passband every time.
 
-Examples include separate entries for WWV frequencies, the Pip, the buzzer, local repeaters, or any other station you monitor. Presets are user-defined; RadioStream+ does not assume that a named signal is always on one fixed frequency.
+Use presets for the frequencies and demodulation modes in your regular monitoring schedule. A preset can represent any signal you monitor; RadioStream+ does not assume that a named signal is always on one fixed frequency.
 
 ## Save a preset
 
