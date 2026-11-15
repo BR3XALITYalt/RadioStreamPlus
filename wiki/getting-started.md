@@ -5,12 +5,18 @@
 ## Requirements
 
 - Windows, macOS, or Linux.
-- Python 3.10 or newer.
+- Python 3.10 or newer when running from source.
 - An internet connection for receiver directories, map tiles, propagation data, and remote receivers.
 
 RadioStream+ uses Python's standard library for its local server. The management map loads Leaflet and OpenStreetMap tiles from their public services.
 
-## Start RadioStream+
+## Windows executable
+
+For Windows x64, download [RadioStreamPlus.exe](https://github.com/BR3XALITYalt/RadioStreamPlus/releases/download/continuous/RadioStreamPlus.exe) from the continuous pre-release and run it. The executable includes Python, downloads the current source from GitHub, and keeps a local source cache. The first successful launch needs internet access; later launches can use the cached source when GitHub is unavailable.
+
+Settings, preferences, presets, and caches are stored in `%LOCALAPPDATA%\RadioStreamPlus\data`.
+
+## Start from source
 
 Open a terminal in the project directory.
 
