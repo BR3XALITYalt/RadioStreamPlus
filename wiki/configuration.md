@@ -11,9 +11,8 @@ RadioStream+ stores its general settings in `radiostream.json`. The management p
 | `center_lat` | Map search center latitude | -90 to 90 |
 | `center_lon` | Map search center longitude | -180 to 180 |
 | `radius_km` | Receiver search radius | 1 to 20,000 km |
-| `frequency_khz` | Current tuned frequency, mirrored from the active link | 0.001 to 300,000,000 kHz (1 Hz to 300 GHz) |
-| `frequency_links` | Named frequency choices, each containing `name` and `frequency_khz` | 1 to 32 entries |
-| `active_frequency_index` | Zero-based index of the selected frequency link | 0 to the final link index |
+| `frequency_khz` | Current frequency used for tuning | 0.001 to 300,000,000 kHz (1 Hz to 300 GHz) |
+| `frequencies_khz` | Numeric frequencies shuffled during receiver rotation | 1 to 32 unique values, each 0.001 to 300,000,000 kHz |
 | `mode` | Demodulation mode | `am`, `lsb`, `usb`, `cw`, `nbfm` |
 | `zoom` | KiwiSDR waterfall zoom | Integer 0 to 14 |
 | `volume` | KiwiSDR player volume | Integer 0 to 200 |
