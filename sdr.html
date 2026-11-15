@@ -8,9 +8,6 @@
 <style>
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;background:#000;color:#eee;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
 #frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-#hud{position:fixed;z-index:5;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:linear-gradient(transparent,rgba(0,0,0,.85));opacity:.92;transition:opacity .25s}
-#hud:hover{opacity:1}#station{font-size:12px;line-height:1.4;color:#e5e8ea;text-shadow:0 1px 3px #000}#station strong{display:block;font-size:13px}
-button{background:rgba(20,25,29,.9);border:1px solid #68737b;border-radius:4px;color:#fff;padding:7px 10px;cursor:pointer}button:hover{background:#303b43}
 #message{position:fixed;z-index:4;top:12px;left:50%;transform:translateX(-50%);max-width:90vw;padding:8px 12px;background:rgba(0,0,0,.78);color:#eee;font-size:12px;text-align:center}
 #message[hidden]{display:none}
 </style>
@@ -19,14 +16,9 @@ button{background:rgba(20,25,29,.9);border:1px solid #68737b;border-radius:4px;c
 <body>
 <iframe id="frame" title="Selected KiwiSDR receiver" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>
 <div id="message">Waiting for a receiver. Select one from the RadioStream+ management page.</div>
-<div id="hud">
-  <div id="station"><strong>RadioStream+</strong>Waiting for receiver details…</div>
-  <div><button id="next">Next receiver</button> <a href="/" style="color:#9bcaff;font-size:12px">Manage</a></div>
-</div>
 <script>
 "use strict";
 const frame=document.getElementById("frame");
-const station=document.getElementById("station");
 const message=document.getElementById("message");
 let activeUrl="";
 let polling=false;
@@ -48,7 +40,6 @@ function stopReceiver(reason){
   frame.src="about:blank";
   message.hidden=false;
   message.textContent=reason;
-  station.innerHTML="<strong>RadioStream+</strong>Receiver stream stopped";
 }
 
 async function refresh(){
@@ -61,13 +52,11 @@ async function refresh(){
     if(state.current){
       const item=state.current;
       const url=item.tune_url;
-      station.innerHTML=`<strong>${escapeHtml(item.name)}</strong>${escapeHtml(item.location)} · ${item.distance_km} km · ${item.snr_hf} dB SNR<br>Frequency: ${formatFrequency(state.config?.frequency_khz)} · next rotation in ${Math.ceil((state.remaining_seconds||0)/60)} min`;
       message.hidden=true;
       if(url!==activeUrl){activeUrl=url;frame.src=url;}
     }else{
       activeUrl="";frame.removeAttribute("src");message.hidden=false;
       message.textContent=state.receiver_error ? `No reachable KiwiSDR is available. ${state.receiver_error}` : "No available KiwiSDR found in the selected range. Configure the map and radius in RadioStream+.";
-      station.innerHTML="<strong>RadioStream+</strong>No receiver selected";
     }
   }catch(error){
     consecutiveFailures++;
@@ -80,10 +69,6 @@ async function refresh(){
   finally{polling=false;}
 }
 function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
-document.getElementById("next").addEventListener("click",async()=>{
-  try{await fetch("/api/next",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});await refresh();}
-  catch(error){message.hidden=false;message.textContent=error.message;}
-});
 refresh();setInterval(refresh,5000);
 </script>
 </body>
