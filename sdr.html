@@ -25,6 +25,10 @@ let polling=false;
 let consecutiveFailures=0;
 const SERVER_FAILURE_LIMIT=3;
 
+frame.addEventListener("load",()=>{
+  if(activeUrl)message.hidden=true;
+});
+
 function stopReceiver(reason){
   activeUrl="";
   frame.src="about:blank";
@@ -42,8 +46,12 @@ async function refresh(){
     if(state.current){
       const item=state.current;
       const url=item.tune_url;
-      message.hidden=true;
-      if(url!==activeUrl){activeUrl=url;frame.src=url;}
+      if(url!==activeUrl){
+        activeUrl=url;
+        message.hidden=false;
+        message.textContent="Loading Receiver...";
+        frame.src=url;
+      }
     }else{
       activeUrl="";frame.removeAttribute("src");message.hidden=false;
       message.textContent=state.receiver_error ? `No reachable KiwiSDR is available. ${state.receiver_error}` : "No available KiwiSDR found in the selected range. Configure the map and radius in RadioStream+.";
