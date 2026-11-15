@@ -41,8 +41,10 @@ DIRECTORY_CACHE_PATH = APP_DIR / "kiwi_directory_cache.json"
 STATION_PREFERENCES_PATH = APP_DIR / "station_preferences.json"
 RECEIVERBOOK_CACHE_PATH = APP_DIR / "receiverbook_cache.json"
 OPENWEBRX_CUSTOM_PATH = APP_DIR / "openwebrx_custom.json"
+RADIO_PRESETS_PATH = APP_DIR / "radio_presets.json"
 STATION_PREFERENCES_LOCK = threading.RLock()
 OPENWEBRX_CUSTOM_LOCK = threading.RLock()
+RADIO_PRESETS_LOCK = threading.RLock()
 station_preferences: dict[str, str] = {}
 RECEIVERBOOK_LOCK = threading.RLock()
 receiverbook_data: list[dict[str, Any]] | None = None
@@ -50,6 +52,7 @@ receiverbook_fetched_monotonic = 0.0
 receiverbook_fetched_at: str | None = None
 receiverbook_error: str | None = None
 openwebrx_custom_data: list[dict[str, Any]] = []
+radio_presets: list[dict[str, Any]] = []
 
 
 def load_station_preferences() -> None:
@@ -396,6 +399,141 @@ def save_config() -> None:
     temporary = CONFIG_PATH.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     temporary.replace(CONFIG_PATH)
+
+
+def normalize_radio_preset(item: Any) -> dict[str, Any]:
+    """Validate and normalize a saved frequency/mode preset."""
+    if not isinstance(item, dict):
+        raise ValueError("Radio preset must be an object")
+    name = str(item.get("name") or "").strip()
+    if not name:
+        raise ValueError("Enter a name for this preset")
+    if len(name) > 80:
+        raise ValueError("Preset names must be 80 characters or fewer")
+
+    frequency_khz = clamp_number(
+        item.get("frequency_khz"),
+        "Preset frequency (kHz)",
+        0.001,
+        300000000,
+    )
+    mode = str(item.get("mode") or "").strip().lower()
+    if mode not in VALID_MODES:
+        raise ValueError("Preset mode must be AM, LSB, USB, CW, or NBFM")
+
+    passband_low = clamp_number(
+        item.get("passband_low"), "Preset passband low", -12000, 12000, integer=True
+    )
+    passband_high = clamp_number(
+        item.get("passband_high"), "Preset passband high", -12000, 12000, integer=True
+    )
+    if passband_low >= passband_high:
+        raise ValueError("Preset passband low must be smaller than passband high")
+
+    preset_id = str(item.get("id") or ("preset-" + secrets.token_hex(8)))
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", preset_id):
+        raise ValueError("Preset ID is invalid")
+    return {
+        "id": preset_id,
+        "name": name,
+        "frequency_khz": frequency_khz,
+        "mode": mode,
+        "passband_low": passband_low,
+        "passband_high": passband_high,
+    }
+
+
+def validate_radio_presets(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict) or payload.get("schema") != 1:
+        raise ValueError("Radio preset file has an unsupported schema")
+    entries = payload.get("presets")
+    if not isinstance(entries, list) or len(entries) > 200:
+        raise ValueError("Radio preset file has an invalid preset list")
+    cleaned: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_names: set[str] = set()
+    for entry in entries:
+        preset = normalize_radio_preset(entry)
+        name_key = preset["name"].casefold()
+        if preset["id"] in seen_ids or name_key in seen_names:
+            continue
+        seen_ids.add(preset["id"])
+        seen_names.add(name_key)
+        cleaned.append(preset)
+    return cleaned
+
+
+def _write_radio_presets(presets: list[dict[str, Any]]) -> None:
+    payload = json.dumps({"schema": 1, "presets": presets}, ensure_ascii=False, indent=2) + "\\n"
+    try:
+        temporary = RADIO_PRESETS_PATH.with_suffix(".json.tmp")
+        temporary.write_text(payload, encoding="utf-8")
+        temporary.replace(RADIO_PRESETS_PATH)
+    except OSError as exc:
+        raise RuntimeError(f"Could not save radio presets: {exc}") from exc
+
+
+def load_radio_presets() -> None:
+    global radio_presets
+    try:
+        payload = json.loads(RADIO_PRESETS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        with RADIO_PRESETS_LOCK:
+            radio_presets = []
+        return
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[presets] Could not load radio presets: {exc}", file=sys.stderr)
+        return
+    try:
+        cleaned = validate_radio_presets(payload)
+    except ValueError as exc:
+        print(f"[presets] Ignoring invalid preset file: {exc}", file=sys.stderr)
+        return
+    with RADIO_PRESETS_LOCK:
+        radio_presets = cleaned
+
+
+def get_radio_presets() -> list[dict[str, Any]]:
+    with RADIO_PRESETS_LOCK:
+        return [dict(preset) for preset in radio_presets]
+
+
+def save_radio_preset(raw: Any) -> list[dict[str, Any]]:
+    global radio_presets
+    preset = normalize_radio_preset(raw)
+    with RADIO_PRESETS_LOCK:
+        updated = [dict(item) for item in radio_presets]
+        existing_index = next(
+            (
+                index for index, item in enumerate(updated)
+                if item["name"].casefold() == preset["name"].casefold()
+            ),
+            None,
+        )
+        if existing_index is not None:
+            preset["id"] = updated[existing_index]["id"]
+            updated[existing_index] = preset
+        else:
+            if len(updated) >= 200:
+                raise ValueError("The radio preset list is full (200 presets)")
+            updated.append(preset)
+        _write_radio_presets(updated)
+        radio_presets = updated
+        return [dict(item) for item in updated]
+
+
+def remove_radio_preset(preset_id: Any) -> list[dict[str, Any]]:
+    global radio_presets
+    wanted = str(preset_id or "").strip()
+    if not wanted:
+        raise ValueError("A radio preset ID is required")
+    with RADIO_PRESETS_LOCK:
+        updated = [dict(item) for item in radio_presets if item["id"] != wanted]
+        if len(updated) == len(radio_presets):
+            raise ValueError("That radio preset was not found")
+        _write_radio_presets(updated)
+        radio_presets = updated
+        return [dict(item) for item in updated]
 
 
 def load_disk_directory() -> None:
