@@ -662,17 +662,17 @@ async function saveRadioPreset() {
     $("radio-preset-name").focus();
     return;
   }
-  const existingData=await api("/api/presets");
-  const existing=(existingData.presets || []).find(item=>item.name.toLowerCase()===name.toLowerCase());
-  if(existing && !window.confirm("Are you sure you want to override this preset?")) {
-    $("radio-preset-status").textContent="Preset was not changed.";
-    $("radio-preset-status").className="status";
-    return;
-  }
-  const settings=readSettings();
   const button=$("save-radio-preset");
   button.disabled=true;
   try {
+    const existingData=await api("/api/presets");
+    const existing=(existingData.presets || []).find(item=>item.name.toLowerCase()===name.toLowerCase());
+    if(existing && !window.confirm("Are you sure you want to override this preset?")) {
+      $("radio-preset-status").textContent="Preset was not changed.";
+      $("radio-preset-status").className="status";
+      return;
+    }
+    const settings=readSettings();
     const data=await api("/api/presets",{
       name,
       frequency_khz:settings.frequency_khz,
@@ -700,6 +700,7 @@ async function saveRadioPreset() {
     $("delete-radio-preset").disabled=!selected;
   }
 }
+
 async function applyRadioPreset() {
   const presetId=$("radio-preset-select").value;
   if(!presetId) return;
