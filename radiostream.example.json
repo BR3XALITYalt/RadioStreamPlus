@@ -3,6 +3,13 @@
   "center_lon": 0.0,
   "radius_km": 500,
   "frequency_khz": 4625.0,
+  "frequency_links": [
+    {
+      "name": "Primary",
+      "frequency_khz": 4625.0
+    }
+  ],
+  "active_frequency_index": 0,
   "mode": "usb",
   "zoom": 11,
   "volume": 180,
