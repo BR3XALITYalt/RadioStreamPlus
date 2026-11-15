@@ -71,6 +71,12 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 #radio-preset-status { min-height:14px; margin-top:5px; }
 .preset-io { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-top:8px; }
 .preset-io button { padding:7px 10px; }
+.advanced-section { margin-top:18px; }
+.advanced-tab { min-width:120px; padding:10px 16px; border-radius:5px 5px 0 0; border-bottom:0; }
+.advanced-panel { border-top-left-radius:0; }
+.advanced-panel[hidden] { display:none; }
+.advanced-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.advanced-help { max-width:850px; color:#aeb8bf; font-size:12px; line-height:1.5; }
 @media (max-width:460px) { .preset-toolbar { grid-template-columns:1fr; } .preset-save-field, .preset-toolbar > button { grid-column:auto; } .preset-actions { flex-wrap:wrap; } }
 .receiver-openwebrx { border-left:3px solid #68a9e9; }
 .receiver .open-receiver { display:inline-block; white-space:nowrap; padding:8px 10px; border:1px solid #46525c; border-radius:4px; background:#252d33; color:#9bcaff; font-size:12px; }
@@ -217,6 +223,22 @@ input[type=range] { padding:0; accent-color:#4294dd; }
       </section>
     </div>
   </div>
+
+  <section class="advanced-section" aria-label="Advanced application tools">
+    <button id="advanced-tab" class="advanced-tab" type="button" aria-expanded="false" aria-controls="advanced-panel">Advanced</button>
+    <div id="advanced-panel" class="panel advanced-panel" hidden>
+      <h2>Advanced</h2>
+      <div class="panel-body">
+        <p class="advanced-help">Export or restore a complete RadioStream+ backup. The XML includes settings, map position and search range, overlay messages, presets, custom OpenWebRX receivers, and receiver preferences.</p>
+        <div class="advanced-actions">
+          <button id="export-all-data" class="primary" type="button">Export All Data XML</button>
+          <button id="import-all-data" type="button">Import All Data XML</button>
+          <input id="all-data-file" type="file" accept=".xml,application/xml,text/xml" hidden>
+        </div>
+        <div id="all-data-status" class="status" role="status"></div>
+      </div>
+    </div>
+  </section>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
@@ -640,6 +662,13 @@ async function saveRadioPreset() {
     $("radio-preset-name").focus();
     return;
   }
+  const existingData=await api("/api/presets");
+  const existing=(existingData.presets || []).find(item=>item.name.toLowerCase()===name.toLowerCase());
+  if(existing && !window.confirm("Are you sure you want to override this preset?")) {
+    $("radio-preset-status").textContent="Preset was not changed.";
+    $("radio-preset-status").className="status";
+    return;
+  }
   const settings=readSettings();
   const button=$("save-radio-preset");
   button.disabled=true;
@@ -648,6 +677,9 @@ async function saveRadioPreset() {
       name,
       frequency_khz:settings.frequency_khz,
       frequencies_khz:settings.frequencies_khz,
+      center_lat:settings.center_lat,
+      center_lon:settings.center_lon,
+      radius_km:settings.radius_km,
       mode:settings.mode,
       passband_low:settings.passband_low,
       passband_high:settings.passband_high,
@@ -681,8 +713,18 @@ async function applyRadioPreset() {
       ? preset.frequencies_khz
       : [preset.frequency_khz];
     renderFrequencies(frequencies);
+    const markerLat=preset.center_lat ?? currentConfig?.center_lat ?? 20;
+    const markerLon=preset.center_lon ?? currentConfig?.center_lon ?? 0;
+    const searchRadius=preset.radius_km ?? currentConfig?.radius_km ?? 500;
+    setCenter(markerLat,markerLon,true);
+    $("radius").value=searchRadius;
+    map.setView([markerLat,markerLon],searchRadius>=2000?2:searchRadius>=500?4:searchRadius>=100?6:8);
+    updateArea();
     currentConfig={
       ...(currentConfig || {}),
+      center_lat:Number(markerLat),
+      center_lon:Number(markerLon),
+      radius_km:Number(searchRadius),
       frequency_khz:preset.frequency_khz,
       frequencies_khz:frequencies
     };
@@ -756,10 +798,23 @@ async function importRadioPresets(file) {
   const button=$("import-radio-presets");
   button.disabled=true;
   try {
+    const xmlText=await file.text();
+    const parsed=new DOMParser().parseFromString(xmlText,"application/xml");
+    if(parsed.querySelector("parsererror")) throw new Error("The selected file is not valid XML.");
+    const importedNames=Array.from(parsed.querySelectorAll("radio-stream-presets > preset > name"))
+      .map(node=>node.textContent.trim().toLowerCase())
+      .filter(Boolean);
+    const current=await api("/api/presets");
+    const namesToOverride=(current.presets || []).filter(preset=>importedNames.includes(preset.name.toLowerCase()));
+    if(namesToOverride.length && !window.confirm("Are you sure you want to override this preset?")) {
+      $("radio-preset-status").textContent="Preset import cancelled.";
+      $("radio-preset-status").className="status";
+      return;
+    }
     const response=await fetch("/api/presets/import",{
       method:"POST",
       headers:{"Content-Type":"application/xml"},
-      body:await file.text()
+      body:xmlText
     });
     const data=await response.json();
     if(!response.ok) throw new Error(data.error || ("HTTP " + response.status));
@@ -787,6 +842,79 @@ $("radio-preset-select").addEventListener("change",()=>{
   const selected=Boolean($("radio-preset-select").value);
   $("load-radio-preset").disabled=!selected;
   $("delete-radio-preset").disabled=!selected;
+});
+
+async function exportAllData() {
+  const button=$("export-all-data");
+  button.disabled=true;
+  try {
+    const response=await fetch("/api/backup/export");
+    if(!response.ok) {
+      let message="HTTP " + response.status;
+      try {
+        const data=await response.json();
+        if(data.error) message=data.error;
+      } catch {}
+      throw new Error(message);
+    }
+    const blob=await response.blob();
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=url;
+    link.download="radiostream-plus-backup.xml";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $("all-data-status").textContent="Complete application backup exported.";
+    $("all-data-status").className="status good";
+  } catch(error) {
+    $("all-data-status").textContent=error.message;
+    $("all-data-status").className="status error";
+  } finally {
+    button.disabled=false;
+  }
+}
+async function importAllData(file) {
+  const button=$("import-all-data");
+  button.disabled=true;
+  try {
+    if(!window.confirm("Importing All Data will replace your current settings, presets, custom receivers, and station preferences. Continue?")) {
+      return;
+    }
+    const response=await fetch("/api/backup/import",{
+      method:"POST",
+      headers:{"Content-Type":"application/xml"},
+      body:await file.text()
+    });
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+    const state=await api("/api/state");
+    fillSettings(state.config);
+    showCurrent(state);
+    await Promise.all([loadCustomOpenwebrx(),loadRadioPresets()]);
+    await discover();
+    $("all-data-status").textContent="Backup restored: " + data.presets + " presets, " + data.custom_receivers + " custom receivers, and " + data.station_preferences + " receiver preferences.";
+    $("all-data-status").className="status good";
+  } catch(error) {
+    $("all-data-status").textContent=error.message;
+    $("all-data-status").className="status error";
+  } finally {
+    button.disabled=false;
+    $("all-data-file").value="";
+  }
+}
+$("advanced-tab").addEventListener("click",()=>{
+  const panel=$("advanced-panel");
+  const expanded=panel.hidden;
+  panel.hidden=!expanded;
+  $("advanced-tab").setAttribute("aria-expanded",String(expanded));
+});
+$("export-all-data").addEventListener("click",exportAllData);
+$("import-all-data").addEventListener("click",()=>$("all-data-file").click());
+$("all-data-file").addEventListener("change",event=>{
+  const file=event.target.files?.[0];
+  if(file) importAllData(file);
 });
 
 async function renderCustomOpenwebrx(instances) {
