@@ -503,20 +503,30 @@ def normalize_radio_preset(item: Any) -> dict[str, Any]:
     if frequency_khz not in frequencies_khz:
         frequency_khz = frequencies_khz[0]
 
+    marker_latitude = item.get("center_lat")
+    if marker_latitude is None:
+        marker_latitude = DEFAULT_CONFIG["center_lat"]
+    marker_longitude = item.get("center_lon")
+    if marker_longitude is None:
+        marker_longitude = DEFAULT_CONFIG["center_lon"]
+    search_radius = item.get("radius_km")
+    if search_radius is None:
+        search_radius = DEFAULT_CONFIG["radius_km"]
+
     center_lat = clamp_number(
-        item.get("center_lat", DEFAULT_CONFIG["center_lat"]),
+        marker_latitude,
         "Preset marker latitude",
         -90,
         90,
     )
     center_lon = clamp_number(
-        item.get("center_lon", DEFAULT_CONFIG["center_lon"]),
+        marker_longitude,
         "Preset marker longitude",
         -180,
         180,
     )
     radius_km = clamp_number(
-        item.get("radius_km", DEFAULT_CONFIG["radius_km"]),
+        search_radius,
         "Preset search range",
         1,
         20000,
@@ -976,6 +986,7 @@ def import_all_data_xml(xml_text: str) -> dict[str, int]:
         if (
             not station_id
             or len(station_id) > 2048
+            or not isinstance(preference, str)
             or preference not in {"like", "dislike", "block"}
         ):
             raise ValueError("Backup contains an invalid station preference")
