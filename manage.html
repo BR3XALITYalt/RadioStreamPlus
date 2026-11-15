@@ -94,7 +94,7 @@ input[type=range] { padding:0; accent-color:#4294dd; }
 .map-legend-swatch.kiwi-unavailable { border-color:#a5a5a5; background:#777; }
 .map-legend-swatch.openwebrx { border-color:#8ec5ff; background:#397eb8; }
 @media (max-width:850px) { .layout { grid-template-columns:1fr; } #map { height:440px; } }
-@media (max-width:460px) { main { padding:10px; } header { padding:13px; } .field-grid { grid-template-columns:1fr; } .field.wide { grid-column:auto; } #map { height:360px; } }
+@media (max-width:460px) { main { padding:10px; } header { padding:13px; } .field-grid { grid-template-columns:1fr; } .field.wide { grid-column:auto; } .custom-openwebrx-form { grid-template-columns:1fr; } #map { height:360px; } }
 </style>
 <script src="/maintenance.js" defer></script>
 </head>
@@ -205,7 +205,7 @@ legend.onAdd = () => {
     <div class="map-legend-title">Receiver legend</div>
     <div class="map-legend-row"><span class="map-legend-swatch kiwi-available"></span><span>KiwiSDR · available</span></div>
     <div class="map-legend-row"><span class="map-legend-swatch kiwi-unavailable"></span><span>KiwiSDR · unavailable or blocked</span></div>
-    <div class="map-legend-row"><span class="map-legend-swatch openwebrx"></span><span>OpenWebRX · Receiverbook</span></div>
+    <div class="map-legend-row"><span class="map-legend-swatch openwebrx"></span><span>OpenWebRX · public or custom</span></div>
   `;
   L.DomEvent.disableClickPropagation(container);
   L.DomEvent.disableScrollPropagation(container);
@@ -401,7 +401,6 @@ function renderReceivers(receivers, openwebrx) {
     openList.append(empty);
   }
   for(const item of openwebrx) {
-    const sourceLabel=item.source === "Custom" ? "Your custom list" : "Receiverbook";
     const sourceDetails=item.source === "Custom"
       ? "Added manually"
       : 'Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>';
@@ -417,6 +416,7 @@ function renderReceivers(receivers, openwebrx) {
     details.textContent=`OpenWebRX ${item.version || "version not listed"} · ${item.distance_km} km away`;
     const listedBy=document.createElement("small");
     listedBy.innerHTML=sourceDetails;
+    info.append(name,details,listedBy);
     const actions=document.createElement("div");
     actions.className="receiver-actions";
     const link=document.createElement("a");
