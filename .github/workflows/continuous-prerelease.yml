@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: continuous-prerelease
@@ -83,3 +84,12 @@ jobs:
             RadioStreamPlus-prerelease.zip \
             --repo "$REPOSITORY" \
             --clobber
+
+      - name: Remove historical Windows executable artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          for artifact_id in $(gh api --paginate "repos/$REPOSITORY/actions/artifacts" --jq '.artifacts[] | select(.name == "RadioStreamPlus-Windows") | .id'); do
+            gh api --method DELETE "repos/$REPOSITORY/actions/artifacts/$artifact_id"
+          done
