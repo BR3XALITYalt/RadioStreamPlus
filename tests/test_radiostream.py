@@ -1,5 +1,7 @@
+import json
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -170,6 +172,46 @@ class RadioStreamTests(unittest.TestCase):
         next_frequency, remaining = rss.take_next_frequency([4625.0], 4625.0, [])
         self.assertIsNone(next_frequency)
         self.assertEqual(remaining, [])
+
+    def test_runtime_rotation_advances_the_active_frequency(self):
+        previous_config = rs.config
+        previous_shuffle = list(rss.frequency_shuffle_remaining)
+        previous_receiver = rss.current_receiver
+        previous_started_at = rss.current_started_at
+        try:
+            rs.config = dict(rs.DEFAULT_CONFIG)
+            rs.config.update({
+                "frequency_khz": 10000.0,
+                "frequencies_khz": [2500.0, 5000.0, 10000.0],
+            })
+            rss.current_receiver = {
+                "id": "rotation-test",
+                "url": "http://kiwi.example.test:8073",
+                "name": "Rotation test receiver",
+            }
+            rss.current_started_at = 100.0
+            with patch.object(rss.random, "shuffle", side_effect=lambda values: None):
+                rss.reset_frequency_shuffle()
+
+            rotation_seconds = rs.config["rotation_minutes"] * 60
+            with (
+                patch.object(rs, "get_station_preference", return_value=""),
+                patch.object(rs, "check_receiver_online", return_value=(True, "")),
+                patch.object(rs, "make_tune_url", return_value="http://kiwi.example.test:8073/"),
+                patch.object(rss, "pick_receiver_across_frequencies") as select_receiver,
+                patch.object(rss.time, "monotonic", return_value=100.0 + rotation_seconds + 1),
+            ):
+                select_receiver.return_value = dict(rss.current_receiver)
+                state = rss._get_state()
+
+            self.assertEqual(rs.config["frequency_khz"], 2500.0)
+            select_receiver.assert_called_once_with(force_next=True)
+            self.assertEqual(state["config"]["frequencies_khz"], [2500.0, 5000.0, 10000.0])
+        finally:
+            rs.config = previous_config
+            rss.frequency_shuffle_remaining = previous_shuffle
+            rss.current_receiver = previous_receiver
+            rss.current_started_at = previous_started_at
 
     def test_overlay_message_defaults_match_current_artwork(self):
         self.assertIn("Every ${M} minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
@@ -473,16 +515,39 @@ class RadioStreamTests(unittest.TestCase):
 
     def test_radio_preset_validation(self):
         preset = rs.normalize_radio_preset({
-            "name": "WWV 10 MHz",
+            "name": "WWV multi-band",
+            "frequency_khz": 10000,
+            "frequencies_khz": [2500, 5000, 10000],
+            "mode": "am",
+            "passband_low": -4900,
+            "passband_high": 4900,
+            "rotation_minutes": 12,
+        })
+        self.assertEqual(preset["name"], "WWV multi-band")
+        self.assertEqual(preset["frequency_khz"], 10000)
+        self.assertEqual(preset["frequencies_khz"], [2500, 5000, 10000])
+        self.assertEqual(preset["rotation_minutes"], 12)
+        self.assertEqual(preset["mode"], "am")
+        self.assertTrue(preset["id"].startswith("preset-"))
+
+        legacy = rs.normalize_radio_preset({
+            "name": "Legacy single frequency",
             "frequency_khz": 10000,
             "mode": "am",
             "passband_low": -4900,
             "passband_high": 4900,
         })
-        self.assertEqual(preset["name"], "WWV 10 MHz")
-        self.assertEqual(preset["frequency_khz"], 10000)
-        self.assertEqual(preset["mode"], "am")
-        self.assertTrue(preset["id"].startswith("preset-"))
+        self.assertEqual(legacy["frequencies_khz"], [10000])
+
+        with self.assertRaises(ValueError):
+            rs.normalize_radio_preset({
+                "name": "Duplicate frequencies",
+                "frequency_khz": 10000,
+                "frequencies_khz": [10000, 10000],
+                "mode": "am",
+                "passband_low": -100,
+                "passband_high": 100,
+            })
         with self.assertRaises(ValueError):
             rs.normalize_radio_preset({
                 "name": "Bad mode",
@@ -499,6 +564,86 @@ class RadioStreamTests(unittest.TestCase):
                 "passband_low": -100,
                 "passband_high": 100,
             })
+
+    def test_legacy_radio_presets_migrate_from_schema_one(self):
+        previous_path = rs.RADIO_PRESETS_PATH
+        previous_presets = rs.radio_presets
+        self.addCleanup(lambda: (
+            setattr(rs, "RADIO_PRESETS_PATH", previous_path),
+            setattr(rs, "radio_presets", previous_presets),
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            rs.RADIO_PRESETS_PATH = Path(directory) / "radio_presets.json"
+            rs.RADIO_PRESETS_PATH.write_text(json.dumps({
+                "schema": 1,
+                "presets": [{
+                    "id": "legacy-one",
+                    "name": "Legacy preset",
+                    "frequency_khz": 4625,
+                    "mode": "usb",
+                    "passband_low": 300,
+                    "passband_high": 2700,
+                }],
+            }), encoding="utf-8")
+            rs.load_radio_presets()
+            loaded = rs.get_radio_presets()[0]
+            self.assertEqual(loaded["frequencies_khz"], [4625])
+            self.assertEqual(loaded["rotation_minutes"], rs.DEFAULT_CONFIG["rotation_minutes"])
+            migrated = json.loads(rs.RADIO_PRESETS_PATH.read_text(encoding="utf-8"))
+            self.assertEqual(migrated["schema"], 2)
+
+    def test_radio_presets_xml_export_import_preserves_multiple_frequencies(self):
+        previous_path = rs.RADIO_PRESETS_PATH
+        previous_presets = rs.radio_presets
+        self.addCleanup(lambda: (
+            setattr(rs, "RADIO_PRESETS_PATH", previous_path),
+            setattr(rs, "radio_presets", previous_presets),
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            rs.RADIO_PRESETS_PATH = Path(directory) / "radio_presets.json"
+            rs.radio_presets = []
+            rs.save_radio_preset({
+                "name": "WWV",
+                "frequency_khz": 10000,
+                "frequencies_khz": [2500, 5000, 10000],
+                "mode": "usb",
+                "passband_low": 300,
+                "passband_high": 2700,
+                "rotation_minutes": 9,
+            })
+            xml_data = rs.export_radio_presets_xml()
+            root = ET.fromstring(xml_data)
+            self.assertEqual(root.tag, "radio-stream-presets")
+            self.assertEqual(root.get("version"), "1")
+            self.assertEqual(
+                [float(node.text) for node in root.findall("./preset/frequencies-khz/frequency")],
+                [2500, 5000, 10000],
+            )
+
+            rs.radio_presets = []
+            result = rs.import_radio_presets_xml(xml_data.decode("utf-8"))
+            self.assertEqual(result["added"], 1)
+            self.assertEqual(result["updated"], 0)
+            imported = result["presets"][0]
+            self.assertEqual(imported["frequency_khz"], 10000)
+            self.assertEqual(imported["frequencies_khz"], [2500, 5000, 10000])
+            self.assertEqual(imported["rotation_minutes"], 9)
+
+            legacy_xml = """<radio-stream-presets version="1">
+              <preset>
+                <name>Old XML preset</name>
+                <frequency-khz>4625</frequency-khz>
+                <mode>am</mode>
+                <passband-low>-4900</passband-low>
+                <passband-high>4900</passband-high>
+              </preset>
+            </radio-stream-presets>"""
+            legacy_result = rs.import_radio_presets_xml(legacy_xml)
+            self.assertEqual(legacy_result["added"], 1)
+            self.assertEqual(legacy_result["presets"][-1]["frequencies_khz"], [4625])
+
+            with self.assertRaises(ValueError):
+                rs.import_radio_presets_xml('<radio-stream-presets version="99"/>')
 
     def test_radio_presets_persist_update_and_delete(self):
         previous_path = rs.RADIO_PRESETS_PATH
