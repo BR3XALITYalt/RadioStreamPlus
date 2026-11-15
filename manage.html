@@ -611,8 +611,19 @@ function renderReceivers(receivers, openwebrx) {
     const sourceDetails=item.source === "Custom"
       ? "Added manually"
       : 'Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>';
+    const matchingProfiles=Array.isArray(item.matching_profiles)?item.matching_profiles:[];
+    const detectedRanges=Array.isArray(item.frequency_ranges)?item.frequency_ranges:[];
+    const profileSummary=matchingProfiles.length
+      ? "Matching profiles: " + matchingProfiles.map(profile =>
+          `${profile.profile_label} (${formatFrequency(profile.low_hz/1000)} - ${formatFrequency(profile.high_hz/1000)})`
+        ).join("; ")
+      : detectedRanges.length
+        ? "Detected coverage: " + detectedRanges.map(range =>
+            `${formatFrequency(range.low_hz/1000)} - ${formatFrequency(range.high_hz/1000)}`
+          ).join("; ")
+        : "Frequency coverage not identified";
     const marker=L.circleMarker([item.lat,item.lon],{radius:7,color:"#8ec5ff",weight:1.5,fillColor:"#397eb8",fillOpacity:.9}).addTo(map);
-    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><a href="${safeText(item.tune_url)}" target="_blank" rel="noopener">Open at selected frequency</a><br><small>${item.source === "Custom" ? "Added manually" : 'Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>'}</small>`);
+    marker.bindPopup(`<strong>${safeText(item.name)}</strong><br>OpenWebRX ${safeText(item.version)}<br>${item.distance_km} km<br><small>${safeText(profileSummary)}</small><br><a href="${safeText(item.tune_url)}" target="_blank" rel="noopener">Open at selected frequency</a><br><small>${item.source === "Custom" ? "Added manually" : 'Listed by <a href="https://www.receiverbook.de/" target="_blank" rel="noopener">Receiverbook</a>'}</small>`);
     receiverMarkers.push(marker);
     const card=document.createElement("div");
     card.className="receiver receiver-openwebrx";
@@ -621,9 +632,11 @@ function renderReceivers(receivers, openwebrx) {
     name.textContent=item.name;
     const details=document.createElement("small");
     details.textContent=`OpenWebRX ${item.version || "version not listed"} · ${item.distance_km} km away`;
+    const profileDetails=document.createElement("small");
+    profileDetails.textContent=profileSummary;
     const listedBy=document.createElement("small");
     listedBy.innerHTML=sourceDetails;
-    info.append(name,details,listedBy);
+    info.append(name,details,profileDetails,listedBy);
     const actions=document.createElement("div");
     actions.className="receiver-actions";
     const link=document.createElement("a");
