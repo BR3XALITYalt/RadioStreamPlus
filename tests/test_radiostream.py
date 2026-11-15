@@ -91,6 +91,62 @@ class RadioStreamTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rs.validate_config({"frequency_khz": 300000001})
 
+    def test_frequency_links_select_the_active_tuning_frequency(self):
+        validated = rs.validate_config({
+            "frequency_links": [
+                {"name": "WWV 2.5 MHz", "frequency_khz": 2500},
+                {"name": "WWV 5 MHz", "frequency_khz": 5000},
+                {"name": "WWV 10 MHz", "frequency_khz": 10000},
+            ],
+            "active_frequency_index": 2,
+        })
+        self.assertEqual(validated["active_frequency_index"], 2)
+        self.assertEqual(validated["frequency_khz"], 10000)
+        self.assertEqual(validated["frequency_links"][0]["name"], "WWV 2.5 MHz")
+        self.assertEqual(validated["frequency_links"][1]["frequency_khz"], 5000)
+
+        url = rs.make_tune_url(
+            {"url": "http://kiwi.example.test:8073"},
+            validated,
+        )
+        self.assertEqual(parse_qs(urlsplit(url).query)["f"], ["10000usbz11"])
+
+    def test_legacy_frequency_updates_the_active_link(self):
+        previous_config = rs.config
+        self.addCleanup(lambda: setattr(rs, "config", previous_config))
+        rs.config = {
+            **rs.DEFAULT_CONFIG,
+            "frequency_links": [
+                {"name": "WWV 5 MHz", "frequency_khz": 5000},
+                {"name": "WWV 10 MHz", "frequency_khz": 10000},
+            ],
+            "active_frequency_index": 1,
+        }
+        validated = rs.validate_config({"frequency_khz": 15000})
+        self.assertEqual(validated["frequency_khz"], 15000)
+        self.assertEqual(validated["frequency_links"][0]["frequency_khz"], 5000)
+        self.assertEqual(validated["frequency_links"][1]["frequency_khz"], 15000)
+
+    def test_frequency_link_validation_rejects_invalid_lists(self):
+        with self.assertRaises(ValueError):
+            rs.validate_config({"frequency_links": []})
+        with self.assertRaises(ValueError):
+            rs.validate_config({
+                "frequency_links": [{"name": "Invalid", "frequency_khz": 0}],
+            })
+        with self.assertRaises(ValueError):
+            rs.validate_config({
+                "frequency_links": [{"name": "Primary", "frequency_khz": 4625}],
+                "active_frequency_index": 1,
+            })
+        with self.assertRaises(ValueError):
+            rs.validate_config({
+                "frequency_links": [
+                    {"name": f"Link {index}", "frequency_khz": 4625}
+                    for index in range(rs.MAX_FREQUENCY_LINKS + 1)
+                ],
+            })
+
     def test_overlay_message_defaults_match_current_artwork(self):
         self.assertIn("Every ${M} minutes", rs.DEFAULT_CONFIG["overlay_reload_notice"])
         self.assertIn("the waterfall", rs.DEFAULT_CONFIG["overlay_reload_notice"])
