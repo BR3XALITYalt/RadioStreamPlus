@@ -101,27 +101,27 @@ jobs:
 
           EOF
 
-          printf '\\nBuild commit: %s\\n' "$COMMIT_SHA" >> release-notes.md
+          printf '\nBuild commit: %s\n' "$COMMIT_SHA" >> release-notes.md
 
           if gh release view continuous --repo "$REPOSITORY" >/dev/null 2>&1; then
-            gh release edit continuous \\
-              --repo "$REPOSITORY" \\
-              --title "Continuous pre-release" \\
-              --notes-file release-notes.md \\
-              --prerelease \\
+            gh release edit continuous \
+              --repo "$REPOSITORY" \
+              --title "Continuous pre-release" \
+              --notes-file release-notes.md \
+              --prerelease \
               --latest=false
           else
-            gh release create continuous \\
-              --repo "$REPOSITORY" \\
-              --title "Continuous pre-release" \\
-              --notes-file release-notes.md \\
-              --prerelease \\
-              --latest=false \\
+            gh release create continuous \
+              --repo "$REPOSITORY" \
+              --title "Continuous pre-release" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest=false \
               --verify-tag
           fi
 
-          gh release upload continuous \\
-            RadioStreamPlus-prerelease.zip \\
-            release-assets/RadioStreamPlus.exe \\
-            --repo "$REPOSITORY" \\
+          gh release upload continuous \
+            RadioStreamPlus-prerelease.zip \
+            release-assets/RadioStreamPlus.exe \
+            --repo "$REPOSITORY" \
             --clobber
