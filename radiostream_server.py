@@ -27,6 +27,7 @@ current_receiver: dict[str, Any] | None = None
 current_started_at = 0.0
 last_receiver_ids: list[str] = []
 last_receiver_error: str | None = None
+frequency_shuffle_remaining: list[float] = []
 SOLAR_CACHE_PATH = core.DATA_DIR / "solar_xml_cache.xml"
 SOLAR_CACHE_MAX_AGE = 14 * 24 * 60 * 60
 SOLAR_REFRESH_INTERVAL_SECONDS = 60 * 60
@@ -173,6 +174,59 @@ def get_maintenance_state() -> dict[str, Any]:
         return dict(MAINTENANCE_STATE)
 
 
+def reset_frequency_shuffle() -> None:
+    """Prepare a shuffled frequency order, starting from the configured first frequency."""
+    global frequency_shuffle_remaining
+    with core.CONFIG_LOCK:
+        frequencies = list(core.config.get("frequencies_khz") or [core.config["frequency_khz"]])
+        current = float(core.config["frequency_khz"])
+    remaining = [frequency for frequency in frequencies if frequency != current]
+    random.shuffle(remaining)
+    with STATE_LOCK:
+        frequency_shuffle_remaining = remaining
+
+
+def advance_frequency() -> bool:
+    """Switch to the next frequency in a shuffled cycle without immediate repeats."""
+    global frequency_shuffle_remaining
+    with core.CONFIG_LOCK:
+        frequencies = list(core.config.get("frequencies_khz") or [core.config["frequency_khz"]])
+        current = float(core.config["frequency_khz"])
+        if len(frequencies) <= 1:
+            return False
+
+        with STATE_LOCK:
+            remaining = [
+                frequency for frequency in frequency_shuffle_remaining
+                if frequency in frequencies and frequency != current
+            ]
+            if not remaining:
+                remaining = [frequency for frequency in frequencies if frequency != current]
+                random.shuffle(remaining)
+            if not remaining:
+                return False
+
+            next_frequency = remaining.pop(0)
+            frequency_shuffle_remaining = remaining
+            core.config["frequency_khz"] = next_frequency
+    print(f"[radio] Switched to {next_frequency:g} kHz")
+    return True
+
+
+def pick_receiver_across_frequencies(force_next: bool = False) -> dict[str, Any] | None:
+    """Find a receiver, trying the other configured frequencies if needed."""
+    with core.CONFIG_LOCK:
+        frequency_count = len(core.config.get("frequencies_khz") or [core.config["frequency_khz"]])
+
+    for attempt in range(frequency_count):
+        chosen = pick_next_receiver(force_next=force_next if attempt == 0 else False)
+        if chosen:
+            return chosen
+        if attempt + 1 >= frequency_count or not advance_frequency():
+            break
+    return None
+
+
 def weighted_receiver_order(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return a weighted random order while retaining receiver quality as a factor."""
     preference_weights = {"like": 4.0, "dislike": 0.2}
@@ -289,14 +343,20 @@ def get_state() -> dict[str, Any]:
     should_start = current is None
     should_rotate = current is not None and elapsed >= rotation_seconds
 
-    if should_start or should_rotate:
-        pick_next_receiver(force_next=should_rotate)
-        with STATE_LOCK:
-            current = dict(current_receiver) if current_receiver else None
-            started = current_started_at
-            receiver_error = last_receiver_error
-        elapsed = time.monotonic() - started if started else 0.0
+    if should_start:
+        pick_receiver_across_frequencies()
+    elif should_rotate:
+        advance_frequency()
+        pick_receiver_across_frequencies(force_next=True)
 
+    with STATE_LOCK:
+        current = dict(current_receiver) if current_receiver else None
+        started = current_started_at
+        receiver_error = last_receiver_error
+    with core.CONFIG_LOCK:
+        cfg = dict(core.config)
+
+    elapsed = time.monotonic() - started if started else 0.0
     if current:
         current["preference"] = core.get_station_preference(str(current.get("id", "")))
         current["blocked"] = current["preference"] == "block"
@@ -504,6 +564,7 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 with core.CONFIG_LOCK:
                     core.config = core.validate_config(data)
                     core.save_config()
+                reset_frequency_shuffle()
                 with STATE_LOCK:
                     current_receiver = None
                     current_started_at = 0.0
@@ -613,6 +674,7 @@ def main(
     core.load_disk_receiverbook_directory()
     core.load_custom_openwebrx_instances()
     core.load_radio_presets()
+    reset_frequency_shuffle()
     http_server = ThreadingHTTPServer((HOST, PORT), RadioStreamHandler)
     http_server.daemon_threads = True
     
