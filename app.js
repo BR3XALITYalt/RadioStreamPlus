@@ -291,7 +291,7 @@ async function fetchPropagationData() {
             : `${error.name}: ${error.message}`;
         const lastLoadText = lastSuccessfulLoad || "never";
 
-        console.error("Unable to update UVB-76 propagation data:", error);
+        console.error("Unable to update HF propagation data:", error);
         setStatus(`* loading failed; last successful load: ${lastLoadText}\n${reason}`);
         return false;
     } finally {
