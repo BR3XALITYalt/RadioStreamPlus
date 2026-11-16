@@ -325,6 +325,28 @@ def get_state() -> dict[str, Any]:
         return _get_state()
 
 
+def get_overlay_state() -> dict[str, Any]:
+    """Read the live overlay timer without triggering receiver selection or rotation."""
+    with core.CONFIG_LOCK:
+        cfg = dict(core.config)
+    with STATE_LOCK:
+        has_receiver = current_receiver is not None and current_started_at > 0
+        started = current_started_at
+
+    rotation_seconds = float(cfg["rotation_minutes"]) * 60
+    if has_receiver:
+        elapsed = max(0.0, time.monotonic() - started)
+        remaining = max(0, math.ceil(rotation_seconds - elapsed))
+    else:
+        remaining = None
+
+    return {
+        "config": cfg,
+        "has_receiver": has_receiver,
+        "remaining_seconds": remaining,
+    }
+
+
 def _get_state() -> dict[str, Any]:
     global current_receiver, current_started_at, last_receiver_error
     with core.CONFIG_LOCK:
@@ -514,6 +536,8 @@ class RadioStreamHandler(BaseHTTPRequestHandler):
                 self.send_json(get_state())
             except Exception as exc:
                 self.send_json({"error": str(exc)}, 503)
+        elif route == "/api/overlay-state":
+            self.send_json(get_overlay_state())
         elif route == "/api/discover":
             try:
                 receivers, meta = core.discover_receivers()
