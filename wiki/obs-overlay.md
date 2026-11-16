@@ -27,7 +27,9 @@ The management page includes two editable overlay messages:
 - **Automatic receiver reload notice** explains the periodic receiver reload.
 - **Black-screen warning** tells viewers what to expect if the receiver window remains black.
 
-The reload message supports the `${M}` placeholder, which is replaced by the configured receiver rotation interval in minutes. Both messages support line breaks and up to eight lines.
+The reload message supports the `${M}` placeholder, which is replaced by the configured receiver rotation interval in minutes. Changes to the messages or rotation interval are reflected in the overlay automatically.
+
+The overlay also shows a **Time until next reload** countdown. It follows the server's active receiver timer and updates once per second. The countdown waits when no receiver is selected; keep the SDR player running for automatic receiver rotation.
 
 ## Add the SDR player
 
