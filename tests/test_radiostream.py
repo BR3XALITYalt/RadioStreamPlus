@@ -219,6 +219,46 @@ class RadioStreamTests(unittest.TestCase):
         self.assertIn("something crashed", rs.DEFAULT_CONFIG["overlay_black_notice"])
         self.assertIn("the next reload", rs.DEFAULT_CONFIG["overlay_black_notice"])
 
+    def test_overlay_state_reports_remaining_time_without_advancing_rotation(self):
+        previous_config = rs.config
+        previous_receiver = rss.current_receiver
+        previous_started_at = rss.current_started_at
+        self.addCleanup(lambda: (
+            setattr(rs, "config", previous_config),
+            setattr(rss, "current_receiver", previous_receiver),
+            setattr(rss, "current_started_at", previous_started_at),
+        ))
+        rs.config = dict(rs.DEFAULT_CONFIG, rotation_minutes=14)
+        rss.current_receiver = {"id": "overlay-countdown-test"}
+        rss.current_started_at = 100.0
+
+        with patch.object(rss.time, "monotonic", return_value=160.2):
+            state = rss.get_overlay_state()
+
+        self.assertTrue(state["has_receiver"])
+        self.assertEqual(state["remaining_seconds"], 780)
+        self.assertEqual(state["config"]["rotation_minutes"], 14)
+        self.assertEqual(rss.current_receiver["id"], "overlay-countdown-test")
+        self.assertEqual(rss.current_started_at, 100.0)
+
+    def test_overlay_state_waits_when_no_receiver_is_selected(self):
+        previous_config = rs.config
+        previous_receiver = rss.current_receiver
+        previous_started_at = rss.current_started_at
+        self.addCleanup(lambda: (
+            setattr(rs, "config", previous_config),
+            setattr(rss, "current_receiver", previous_receiver),
+            setattr(rss, "current_started_at", previous_started_at),
+        ))
+        rs.config = dict(rs.DEFAULT_CONFIG)
+        rss.current_receiver = None
+        rss.current_started_at = 0.0
+
+        state = rss.get_overlay_state()
+
+        self.assertFalse(state["has_receiver"])
+        self.assertIsNone(state["remaining_seconds"])
+
     def test_config_validation_preserves_rotation_placeholder(self):
         text = "Every ${M} minutes, reload receiver"
         validated = rs.validate_config({"overlay_reload_notice": text})
