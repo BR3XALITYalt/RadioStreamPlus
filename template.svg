@@ -381,11 +381,10 @@
              style="stroke-width:4.39594">80-40m</tspan></text>
       </g>
     </g>
-    <g id="reload-countdown" transform="translate(702,250)">
-      <rect x="0" y="0" width="500" height="164" rx="6" fill="#171d21" fill-opacity=".94" stroke="#46525c" stroke-width="2"/>
-      <text x="24" y="43" fill="#ffffff" font-family="Cantarell,Arial,sans-serif" font-size="24" font-weight="bold">TIME UNTIL NEXT RELOAD</text>
-      <text id="reload-countdown-value" x="24" y="126" fill="#ffffff" font-family="Cantarell,Arial,sans-serif" font-size="68" font-weight="bold">--:--</text>
-      <text id="reload-countdown-status" x="238" y="119" fill="#aeb8bf" font-family="Cantarell,Arial,sans-serif" font-size="18">WAITING FOR RECEIVER</text>
+    <g id="reload-countdown" transform="translate(1880,18)" text-anchor="end">
+      <text x="0" y="22" fill="#ffffff" font-family="Cantarell" font-size="20" font-weight="bold">TIME UNTIL NEXT RELOAD</text>
+      <text id="reload-countdown-value" x="0" y="61" fill="#ffffff" font-family="Cantarell" font-size="38" font-weight="bold">--:--</text>
+      <text id="reload-countdown-status" x="0" y="83" fill="#cccccc" font-family="Cantarell" font-size="15">WAITING FOR RECEIVER</text>
     </g>
     <g
        id="g8144"
