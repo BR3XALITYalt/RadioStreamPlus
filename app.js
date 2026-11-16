@@ -429,7 +429,7 @@ function updateReloadCountdown() {
         return;
     }
 
-    const remaining = Math.max(0, Math.ceil((overlayReloadDeadline - Date.now()) / 1000));
+    const remaining = Math.max(0, Math.ceil((overlayReloadDeadline - performance.now()) / 1000));
     value.textContent = formatCountdown(remaining);
     status.textContent = remaining === 0 ? "RELOAD DUE" : "UNTIL NEXT RELOAD";
 }
@@ -444,7 +444,7 @@ async function loadOverlayMessages() {
             ? String(config.rotation_minutes)
             : "14";
         const reloadNotice = String(config.overlay_reload_notice ?? "")
-            .replace(/\\$\\{M\\}/g, rotationMinutes);
+            .replaceAll("$" + "{M}", rotationMinutes);
         const blackNotice = String(config.overlay_black_notice ?? "");
 
         if (reloadNotice !== lastOverlayReloadNotice) {
@@ -473,7 +473,7 @@ async function loadOverlayMessages() {
             payload.remaining_seconds !== null &&
             Number.isFinite(remaining);
         overlayReloadDeadline = overlayHasReceiver
-            ? Date.now() + Math.max(0, remaining) * 1000
+            ? performance.now() + Math.max(0, remaining) * 1000
             : null;
         updateReloadCountdown();
     } catch (error) {
