@@ -33,6 +33,10 @@ let statusElement;
 let valueElements = [];
 let clockSettings;
 let browserTimeZone = "UTC";
+let overlayReloadDeadline = null;
+let overlayHasReceiver = false;
+let lastOverlayReloadNotice = null;
+let lastOverlayBlackNotice = null;
 
 function setStatus(message, visible = true) {
     if (!statusElement) return;
@@ -406,9 +410,33 @@ function setOverlayTextLines(elementId, value, x, firstY, lineHeight) {
     element.replaceChildren(fragment);
 }
 
+function formatCountdown(seconds) {
+    const total = Math.max(0, Math.ceil(seconds));
+    const minutes = Math.floor(total / 60);
+    const remainingSeconds = total % 60;
+    return String(minutes).padStart(2, "0") + ":" +
+        String(remainingSeconds).padStart(2, "0");
+}
+
+function updateReloadCountdown() {
+    const value = document.getElementById("reload-countdown-value");
+    const status = document.getElementById("reload-countdown-status");
+    if (!value || !status) return;
+
+    if (!overlayHasReceiver || !Number.isFinite(overlayReloadDeadline)) {
+        value.textContent = "--:--";
+        status.textContent = "WAITING FOR RECEIVER";
+        return;
+    }
+
+    const remaining = Math.max(0, Math.ceil((overlayReloadDeadline - Date.now()) / 1000));
+    value.textContent = formatCountdown(remaining);
+    status.textContent = remaining === 0 ? "RELOAD DUE" : "UNTIL NEXT RELOAD";
+}
+
 async function loadOverlayMessages() {
     try {
-        const response = await fetch("/api/config", { cache: "no-store" });
+        const response = await fetch("/api/overlay-state", { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
         const config = payload.config || {};
@@ -416,25 +444,40 @@ async function loadOverlayMessages() {
             ? String(config.rotation_minutes)
             : "14";
         const reloadNotice = String(config.overlay_reload_notice ?? "")
-            .replace(/\$\{M\}/g, rotationMinutes);
+            .replace(/\\$\\{M\\}/g, rotationMinutes);
+        const blackNotice = String(config.overlay_black_notice ?? "");
 
-        setOverlayTextLines(
-            "text9615",
-            reloadNotice,
-            702.64648,
-            907.37019,
-            32.2666
-        );
-        setOverlayTextLines(
-            "text11484",
-            config.overlay_black_notice,
-            44.925781,
-            931.4984,
-            26.4
-        );
+        if (reloadNotice !== lastOverlayReloadNotice) {
+            setOverlayTextLines(
+                "text9615",
+                reloadNotice,
+                702.64648,
+                907.37019,
+                32.2666
+            );
+            lastOverlayReloadNotice = reloadNotice;
+        }
+        if (blackNotice !== lastOverlayBlackNotice) {
+            setOverlayTextLines(
+                "text11484",
+                blackNotice,
+                44.925781,
+                931.4984,
+                26.4
+            );
+            lastOverlayBlackNotice = blackNotice;
+        }
+
+        const remaining = Number(payload.remaining_seconds);
+        overlayHasReceiver = payload.has_receiver === true &&
+            payload.remaining_seconds !== null &&
+            Number.isFinite(remaining);
+        overlayReloadDeadline = overlayHasReceiver
+            ? Date.now() + Math.max(0, remaining) * 1000
+            : null;
+        updateReloadCountdown();
     } catch (error) {
-        
-        console.warn("Unable to load saved overlay messages:", error);
+        console.warn("Unable to refresh overlay state:", error);
     }
 }
 
@@ -453,6 +496,9 @@ function initialize() {
 
     initializeClockSettings();
     loadOverlayMessages();
+    window.setInterval(loadOverlayMessages, 5000);
+    updateReloadCountdown();
+    window.setInterval(updateReloadCountdown, 1000);
     updateClocks();
     window.setInterval(updateClocks, 1000);
     refreshPropagationData();
